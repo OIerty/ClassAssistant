@@ -30,3 +30,9 @@ data/summaries/
 .DS_Store
 Thumbs.db
 *.log
+
+# ---- 构建产物 ----
+api-service/build/
+api-service/dist/
+release/
+*.zip
