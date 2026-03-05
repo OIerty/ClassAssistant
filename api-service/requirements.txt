@@ -12,6 +12,12 @@ python-multipart==0.0.20
 # PPT 解析
 python-pptx==1.0.2
 
+# PDF 解析
+pypdf>=4.0.0
+
+# Word 文档解析
+python-docx>=1.1.0
+
 # 音频录制
 pyaudio==0.2.14
 

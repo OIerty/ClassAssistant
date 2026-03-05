@@ -1,1 +1,207 @@
-# ClassAssistant
+# 🐟 上课摸鱼搭子 (ClassAssistant)
+
+> 大学课堂辅助工具 —— 实时语音监控，点名预警，一键救场
+
+一个 Windows 桌面悬浮窗应用，在上课时默默运行在屏幕角落。通过实时语音识别监听课堂内容，当检测到「点名」「随机提问」等关键词时，立刻弹出红色警报并提供 AI 救场答案。课后还能自动生成结构化笔记。
+
+## ✨ 核心功能
+
+| 功能 | 说明 |
+|------|------|
+| 🎙️ 实时语音监控 | 麦克风录音 → ASR 语音识别 → 实时转文字 |
+| 🚨 点名预警 | 检测到点名关键词时，窗口闪红光 + 置顶提醒 |
+| 🆘 一键救场 | 调用 LLM 分析课堂上下文，快速给出老师问题的参考答案 |
+| 📝 课后总结 | 一键生成 Markdown 格式的课堂笔记 |
+| 📄 资料上传 | 支持上传 PPT / PDF / Word 课件，辅助 AI 理解课堂内容 |
+
+## 🏗️ 技术架构
+
+```
+┌─────────────────────┐       HTTP / WebSocket       ┌──────────────────────┐
+│   Tauri 2.0 桌面端   │ ◄─────────────────────────► │   FastAPI 后端服务     │
+│   React 19 + TS     │                              │   Python 3.11        │
+│   TailwindCSS 4     │                              │                      │
+│   无边框悬浮窗       │                              │   ASR: Seed-ASR      │
+│                     │                              │   LLM: OpenAI API    │
+└─────────────────────┘                              │   Audio: PyAudio     │
+                                                     └──────────────────────┘
+```
+
+## 📦 环境要求
+
+- **操作系统**: Windows 10/11
+- **Python**: 3.11+ (推荐 Conda 环境)
+- **Node.js**: 18+
+- **Rust**: 最新稳定版 (Tauri 2.0 需要)
+- **Visual Studio Build Tools**: 2022 (C++ 桌面开发工作负载)
+
+## 🚀 快速开始
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/ouyangyipeng/ClassAssistant.git
+cd ClassAssistant
+```
+
+### 2. 配置 Python 环境
+
+```bash
+conda create -n class-assistant python=3.11 -y
+conda activate class-assistant
+cd api-service
+pip install -r requirements.txt
+```
+
+### 3. 配置环境变量
+
+复制 `api-service/.env.example`（或手动创建 `api-service/.env`）：
+
+```env
+# ASR 模式: mock | dashscope | seed-asr
+ASR_MODE=seed-asr
+
+# Seed-ASR (字节跳动)
+SEED_ASR_APP_KEY=your_app_key
+SEED_ASR_ACCESS_KEY=your_access_key
+SEED_ASR_RESOURCE_ID=volc.bigasr.sauc.duration
+
+# LLM (OpenAI 兼容接口)
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your_api_key
+LLM_MODEL=gpt-4o-mini
+
+# 音频参数 (一般无需修改)
+AUDIO_SAMPLE_RATE=16000
+AUDIO_CHANNELS=1
+AUDIO_CHUNK_SIZE=3200
+```
+
+### 4. 安装前端依赖
+
+```bash
+cd app-ui
+npm install
+```
+
+### 5. 启动开发模式
+
+**方式一：一键启动（推荐）**
+
+双击项目根目录的 `dev.bat`，自动启动后端+前端。
+
+**方式二：分别启动**
+
+终端 1 - 启动后端：
+```bash
+cd api-service
+conda activate class-assistant
+python -m uvicorn main:app --host 127.0.0.1 --port 8765 --reload
+```
+
+终端 2 - 启动前端：
+```bash
+cd app-ui
+npm run tauri dev
+```
+
+## 🔍 验证与调试
+
+### 验证麦克风
+
+后端启动后，访问：
+```
+GET http://127.0.0.1:8765/api/check_mic
+```
+
+返回示例：
+```json
+{
+  "status": "ok",
+  "device": "Microphone (Realtek Audio)",
+  "sample_rate": 44100,
+  "channels": 2,
+  "message": "麦克风可用: Microphone (Realtek Audio)"
+}
+```
+
+### API 文档
+
+后端启动后访问 Swagger UI：
+```
+http://127.0.0.1:8765/docs
+```
+
+### 健康检查
+
+```
+GET http://127.0.0.1:8765/api/health
+```
+
+## 📁 项目结构
+
+```
+ClassAssistant/
+├── api-service/                # Python FastAPI 后端
+│   ├── main.py                 # 应用入口
+│   ├── routers/                # API 路由
+│   │   ├── ppt_router.py      # 资料上传 (PPT/PDF/Word)
+│   │   ├── monitor_router.py  # 监控启停 + 麦克风检测
+│   │   ├── rescue_router.py   # 紧急救场
+│   │   └── summary_router.py  # 课后总结
+│   ├── services/               # 业务逻辑
+│   │   ├── asr_service.py     # ASR 语音识别 (Mock/DashScope/Seed-ASR)
+│   │   ├── llm_service.py     # LLM 大模型调用
+│   │   ├── monitor_service.py # 核心监控服务
+│   │   ├── ppt_service.py     # 课件解析 (PPT/PDF/Word)
+│   │   └── transcript_service.py # 转录管理
+│   ├── requirements.txt
+│   └── .env                    # 环境变量 (不提交到 Git)
+├── app-ui/                     # Tauri + React 前端
+│   ├── src/
+│   │   ├── App.tsx             # 主组件
+│   │   ├── components/         # UI 组件
+│   │   ├── hooks/              # WebSocket 管理
+│   │   └── services/           # API 客户端
+│   └── src-tauri/              # Rust Tauri 配置
+├── data/                       # 运行时数据 (不提交到 Git)
+├── docs/                       # 开发文档
+├── dev.bat                     # 一键启动脚本
+└── README.md
+```
+
+## 🎯 使用流程
+
+1. 启动应用后，屏幕角落出现半透明悬浮窗
+2. 点击 **📄 上传资料** 上传课件 (PPT/PDF/Word)
+3. 点击 **🎣 开始摸鱼** 开启语音监控
+4. 老师点名时 → 🚨 红色警报弹出
+5. 点击 **🆘 救场** → AI 分析课堂内容并给出参考答案
+6. 下课后点击 **📝** → 自动生成课堂笔记
+
+## 📋 支持的 ASR 服务
+
+| 模式 | 提供商 | 说明 |
+|------|--------|------|
+| `mock` | - | 空实现，用于 UI 开发测试 |
+| `dashscope` | 阿里云百炼 | Fun-ASR 实时语音识别 |
+| `seed-asr` | 字节跳动 | Seed-ASR 大模型，精度更高 |
+
+## 📋 支持的文件格式
+
+| 格式 | 扩展名 | 解析库 |
+|------|--------|--------|
+| PowerPoint | `.pptx` | python-pptx |
+| PDF | `.pdf` | pypdf |
+| Word | `.docx` | python-docx |
+
+## ⚠️ 注意事项
+
+- `.env` 文件包含 API 密钥，**请勿提交到 Git**
+- 仅供学习用途，请合理使用课堂工具
+- 需要网络连接才能使用 ASR 和 LLM 服务
+- 麦克风权限需要在系统设置中开启
+
+## 📄 License
+
+MIT

@@ -1,11 +1,11 @@
 """
-PPT 解析路由
-============
-处理 PPT 文件上传与文本提取
+课程资料上传路由
+================
+处理 PPT / PDF / Word 文件上传与文本提取
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from services.ppt_service import parse_ppt_to_text
+from services.ppt_service import parse_material
 import os
 
 router = APIRouter()
@@ -13,30 +13,35 @@ router = APIRouter()
 # data 目录路径
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
 
+# 支持的文件扩展名
+ALLOWED_EXTENSIONS = ('.pptx', '.ppt', '.pdf', '.docx', '.doc')
+
 
 @router.post("/upload_ppt")
 async def upload_ppt(file: UploadFile = File(...)):
     """
-    上传 PPT 文件并解析为纯文本
-    - 接收上传的 .pptx 文件
-    - 使用 python-pptx 解析出所有幻灯片文本
-    - 保存到 /data/current_class_material.txt
+    上传课程资料文件并解析为纯文本
+    支持格式: .pptx, .pdf, .docx
     """
-    # 校验文件类型
-    if not file.filename.endswith(('.pptx', '.ppt')):
-        raise HTTPException(status_code=400, detail="仅支持 .pptx 格式的文件")
+    filename = file.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的文件格式，仅支持: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
 
     try:
-        # 读取上传的文件内容
         content = await file.read()
 
-        # 临时保存文件用于解析
-        temp_path = os.path.join(DATA_DIR, "temp_upload.pptx")
+        # 使用安全文件名保存临时文件
+        temp_path = os.path.join(DATA_DIR, f"temp_upload{ext}")
         with open(temp_path, "wb") as f:
             f.write(content)
 
-        # 调用解析服务
-        text = parse_ppt_to_text(temp_path)
+        # 调用统一解析服务
+        text = parse_material(temp_path, filename)
 
         # 将解析结果保存到课程资料文件
         material_path = os.path.join(DATA_DIR, "current_class_material.txt")
@@ -49,9 +54,9 @@ async def upload_ppt(file: UploadFile = File(...)):
 
         return {
             "status": "success",
-            "message": f"成功解析 PPT: {file.filename}",
+            "message": f"成功解析: {filename}",
             "text_length": len(text)
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PPT 解析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")

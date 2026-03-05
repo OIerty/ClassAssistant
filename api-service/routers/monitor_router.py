@@ -66,6 +66,35 @@ async def get_keywords():
     }
 
 
+@router.get("/check_mic")
+async def check_mic():
+    """
+    检查麦克风是否可用
+    - 尝试打开 PyAudio 并获取默认输入设备信息
+    - 返回设备名称和可用状态
+    """
+    try:
+        import pyaudio
+        p = pyaudio.PyAudio()
+        info = p.get_default_input_device_info()
+        device_name = info.get("name", "Unknown")
+        sample_rate = int(info.get("defaultSampleRate", 0))
+        channels = int(info.get("maxInputChannels", 0))
+        p.terminate()
+        return {
+            "status": "ok",
+            "device": device_name,
+            "sample_rate": sample_rate,
+            "channels": channels,
+            "message": f"麦克风可用: {device_name}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"麦克风不可用: {str(e)}"
+        }
+
+
 @router.websocket("/ws/alerts")
 async def websocket_alerts(websocket: WebSocket):
     """

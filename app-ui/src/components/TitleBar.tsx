@@ -33,8 +33,8 @@ export default function TitleBar({ isMonitoring }: TitleBarProps) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* 左侧标题 */}
-      <div className="flex items-center gap-1.5 text-xs text-white/80">
+      {/* 左侧标题 - 也作为拖拽区域 */}
+      <div data-tauri-drag-region className="flex items-center gap-1.5 text-xs text-white/80 pointer-events-none">
         <span className="text-sm">🐟</span>
         <span className="font-medium tracking-wide">摸鱼搭子</span>
         {isMonitoring && (

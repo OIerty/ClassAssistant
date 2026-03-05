@@ -49,10 +49,10 @@ export default function ToolBar({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pptx,.ppt"
+        accept=".pptx,.ppt,.pdf,.docx,.doc"
         className="hidden"
         onChange={handleFileChange}
-        aria-label="上传PPT文件"
+        aria-label="上传课程资料文件"
       />
 
       {/* 上传资料按钮 */}
