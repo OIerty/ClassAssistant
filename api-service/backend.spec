@@ -88,9 +88,13 @@ exe = EXE(
     icon=None,
 )
 
+# Filter out corrupted DLLs picked up from tesseract on system PATH
+excluded_dlls = {'libfribidi-0.dll'}
+filtered_binaries = [b for b in a.binaries if b[0].lower() not in excluded_dlls]
+
 coll = COLLECT(
     exe,
-    a.binaries,
+    filtered_binaries,
     a.zipfiles,
     a.datas,
     strip=False,

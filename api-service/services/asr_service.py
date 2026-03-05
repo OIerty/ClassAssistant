@@ -305,6 +305,8 @@ class SeedASR(BaseASR):
             "X-Api-Connect-Id": connect_id,
         }
 
+        logger.info("[SeedASR] connecting with resource_id=%s", resource_id)
+
         try:
             self._ws = websocket.create_connection(
                 self.WS_URL,
