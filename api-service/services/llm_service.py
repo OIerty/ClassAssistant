@@ -5,10 +5,13 @@ LLM 服务
 """
 
 import os
+import logging
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class LLMService:
@@ -197,3 +200,54 @@ class LLMService:
 
         except Exception as e:
             return f"# ⚠️ 总结生成失败\n\n错误信息: {str(e)}\n\n请检查 LLM API 配置。"
+
+    async def compress_monitoring_progress(self, previous_summary: str, recent_lines: list[str]) -> str:
+        """
+        将历史摘要和新近课堂记录压缩为新的滚动摘要。
+
+        Args:
+            previous_summary: 上一次滚动摘要，首次为空字符串
+            recent_lines: 本轮待压缩的课堂记录（建议 50 行）
+
+        Returns:
+            新的精简摘要文本
+        """
+        if not recent_lines:
+            return previous_summary.strip()
+
+        system_prompt = """你是一个课堂记录压缩助手。你的任务是把“历史摘要”和“最新课堂记录”合并成一份更短但信息完整的滚动摘要。
+
+要求：
+1. 保留课程主题、关键知识点、老师强调内容、作业/截止日期、课堂问答。
+2. 删除口头重复、语气词、无信息量重复表述。
+3. 输出精简中文，不要编造内容。
+4. 控制在 300 到 500 字以内。
+5. 直接输出摘要正文，不要加 markdown 标题、代码块或额外说明。"""
+
+        previous_summary = previous_summary.strip() or "暂无历史摘要"
+        new_content = "\n".join(recent_lines)
+        user_prompt = f"""【历史摘要】
+{previous_summary}
+
+【最新课堂记录】
+{new_content}
+
+请输出新的滚动摘要。"""
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=900,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            if not content:
+                raise ValueError("LLM 未返回滚动摘要内容")
+            return content
+        except Exception:
+            logger.exception("滚动摘要生成失败")
+            raise

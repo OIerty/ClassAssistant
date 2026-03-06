@@ -19,6 +19,8 @@ interface ToolBarProps {
   onSummary: () => void;
   /** 点击"老师讲到哪了" */
   onCatchup: () => void;
+  /** 点击设置 */
+  onSettings: () => void;
 }
 
 export default function ToolBar({
@@ -28,6 +30,7 @@ export default function ToolBar({
   onToggleMonitor,
   onSummary,
   onCatchup,
+  onSettings,
 }: ToolBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,6 +123,19 @@ export default function ToolBar({
           📍
         </button>
       )}
+
+      <button
+        onClick={onSettings}
+        disabled={isLoading}
+        className="px-3 py-1.5 text-xs font-medium rounded-lg
+                   bg-white/10 text-white/80 border border-white/10
+                   hover:bg-white/15 hover:border-white/20
+                   disabled:opacity-50 disabled:cursor-not-allowed
+                   transition-all duration-200 backdrop-blur-sm"
+        title="打开设置"
+      >
+        ⚙️
+      </button>
     </div>
   );
 }

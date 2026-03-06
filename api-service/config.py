@@ -16,8 +16,10 @@ else:
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+CITE_DIR = os.path.join(DATA_DIR, "cite")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(os.path.join(DATA_DIR, "summaries"), exist_ok=True)
+os.makedirs(CITE_DIR, exist_ok=True)
 
 # 启动日志：方便确认打包版路径是否正确
 try:

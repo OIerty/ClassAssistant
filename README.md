@@ -1,310 +1,240 @@
 # 🐟 上课摸鱼搭子 (ClassAssistant)
 
-> 大学课堂辅助工具 —— 实时语音监控，点名预警，一键救场
+<!-- markdownlint-disable MD033 -->
+<div align="center">
+  <a href="https://github.com/ouyangyipeng/ClassAssistant/stargazers">
+    <img src="https://img.shields.io/github/stars/ouyangyipeng/ClassAssistant?style=for-the-badge&logo=github" alt="GitHub stars" />
+  </a>
+  <a href="https://github.com/ouyangyipeng/ClassAssistant/issues">
+    <img src="https://img.shields.io/github/issues/ouyangyipeng/ClassAssistant?style=for-the-badge&logo=github" alt="GitHub issues" />
+  </a>
+  <a href="https://github.com/ouyangyipeng/ClassAssistant/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/ouyangyipeng/ClassAssistant?style=for-the-badge" alt="License" />
+  </a>
+</div>
+<!-- markdownlint-enable MD033 -->
 
-一个 Windows 桌面悬浮窗应用，在上课时默默运行在屏幕角落。通过实时语音识别监听课堂内容，当检测到「点名」「随机提问」等关键词时，立刻弹出红色警报并提供 AI 救场答案。课后还能自动生成结构化笔记。
+> 大学课堂辅助桌面悬浮窗：实时转录、点名预警、一键救场、课后总结。
 
-> “Agent老师没做出来，Agent学生倒先做出来了！” — 来自内测群的反馈
+应用常驻在屏幕角落，通过麦克风监听课堂内容。当识别到“点名”“提问”“签到”等关键词时，立即弹出红色警报；同时可以结合课堂转录和上传的课件资料，调用 LLM 生成救场答案、课堂进度总结和课后笔记。
+
+## 🎬 Demo
+
+### 摸鱼监控状态
+
+![摸鱼监控状态](docs/img/%E6%91%B8%E9%B1%BC%E7%8A%B6%E6%80%81.gif)
+
+### 点名警报与 AI 救场
+
+![点名警报与 AI 救场](docs/img/%E7%82%B9%E5%90%8D%E8%AD%A6%E6%8A%A5%E4%B8%8Eai%E5%9B%9E%E7%AD%94.gif)
+
+### 老师讲到哪儿了
+
+![老师讲到哪儿了](docs/img/%E8%80%81%E5%B8%88%E8%AE%B2%E5%88%B0%E5%93%AA%E5%84%BF%E4%BA%86.gif)
 
 ## ✨ 核心功能
 
 | 功能 | 说明 |
 |------|------|
-| 🎙️ 实时语音监控 | 麦克风录音 → ASR 语音识别 → 实时转文字 |
-| 🚨 点名预警 | 检测到点名关键词时，窗口闪红光 + 置顶提醒 |
-| 🔧 自定义关键词 | 编辑 `data/keywords.txt` 即可自定义监控词，实时生效 |
-| 🆘 一键救场 | 调用 LLM 分析课堂上下文，快速给出老师问题的参考答案 |
-| 📍 老师讲到哪了 | 一键 AI 总结当前课堂进度，快速回到上下文 |
-| 📝 课后总结 | 一键生成 Markdown 格式的课堂笔记 |
-| 📄 资料上传 | 支持上传 PPT / PDF / Word 课件，辅助 AI 理解课堂内容 |
+| 🎙️ 实时语音监控 | Local ASR / Seed-ASR / DashScope / Mock 多模式切换 |
+| 🧹 去重转录 | 流式识别结果按句落盘，过滤重复、碎片标点和相近修正文 |
+| 🧠 滚动课堂摘要 | 每累计 50 条课堂记录，自动压缩为一段历史摘要，减小上下文体积 |
+| 🚨 点名预警 | 命中关键词后通过 WebSocket 推送红色警报弹层 |
+| 🆘 一键救场 | 结合最近转录和课程资料，生成应答思路与参考答案 |
+| 📍 老师讲到哪了 | 对最近课堂内容做即时进度总结 |
+| 📝 课后总结 | 生成 Markdown 课堂笔记并落盘到 data/summaries |
+| 📄 资料上传与引用 | PPT / PDF / Word 解析后存入 data/cite，开始监控前可选择引用资料 |
+| ⚙️ 内置设置面板 | 前端可直接编辑后端 .env，无需手动找文件 |
 
-## 🏗️ 技术架构
+## 🏗️ 架构概览
 
+```text
+Tauri + React UI
+        │
+        ├─ HTTP API
+        └─ WebSocket Alert
+                │
+          FastAPI Backend
+                │
+      ┌─────────┼─────────┐
+      │         │         │
+    ASR       LLM     Transcript
+      │                   │
+  Local / Seed /      class_transcript.txt
+  DashScope / Mock    current_class_material.txt
+                      data/cite/*.txt
 ```
-┌─────────────────────┐       HTTP / WebSocket       ┌──────────────────────┐
-│   Tauri 2.0 桌面端   │ ◄─────────────────────────► │   FastAPI 后端服务     │
-│   React 19 + TS     │                              │   Python 3.11        │
-│   TailwindCSS 4     │                              │                      │
-│   无边框悬浮窗       │                              │   ASR: Local/Seed-ASR│
-│                     │                              │   LLM: OpenAI API    │
-└─────────────────────┘                              │   Audio: PyAudio     │
-                                                     └──────────────────────┘
-```
 
-## 📦 环境要求
-
-- **操作系统**: Windows 10/11
-- **Python**: 3.11+
-- **Node.js**: 18+
-- **Rust**: 最新稳定版 (Tauri 2.0 需要)
-- **Visual Studio Build Tools**: 2022 (C++ 桌面开发工作负载)
+后端负责录音、ASR、关键词检测、滚动摘要和 LLM 调用；前端负责悬浮窗 UI、警报展示、资料上传、监控启动参数选择和设置编辑。
 
 ## 🚀 快速开始
 
-### 1. 克隆项目
+### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/ouyangyipeng/ClassAssistant.git
 cd ClassAssistant
 ```
 
-### 2. 配置 Python 环境
+### 2. 配置后端 Python 环境
 
 ```bash
 cd api-service
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip install pyinstaller
 ```
 
-### 3. 配置环境变量
-
-复制 `api-service/.env.example`（或手动创建 `api-service/.env`）：
-
-```env
-# ASR 模式: local | mock | dashscope | seed-asr
-ASR_MODE=local
-
-# Seed-ASR (字节跳动) — ASR_MODE=seed-asr 时需要
-SEED_ASR_APP_KEY=your_app_key
-SEED_ASR_ACCESS_KEY=your_access_key
-SEED_ASR_RESOURCE_ID=volc.bigasr.sauc.duration
-
-# LLM (OpenAI 兼容接口)
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_KEY=your_api_key
-LLM_MODEL=gpt-4o-mini
-
-# 音频参数 (一般无需修改)
-AUDIO_SAMPLE_RATE=16000
-AUDIO_CHANNELS=1
-AUDIO_CHUNK_SIZE=3200
-```
-
-### 4. 安装前端依赖
+### 3. 配置前端依赖
 
 ```bash
 cd app-ui
 npm install
 ```
 
+### 4. 配置环境变量
+
+在 api-service 下创建 .env，可参考 .env.example：
+
+```env
+# ASR 模式: local | mock | dashscope | seed-asr
+ASR_MODE=local
+
+# Seed-ASR
+SEED_ASR_APP_KEY=your_app_key
+SEED_ASR_ACCESS_KEY=your_access_key
+SEED_ASR_RESOURCE_ID=volc.bigasr.sauc.duration
+
+# DashScope Fun-ASR
+DASHSCOPE_API_KEY=sk-your-dashscope-key
+
+# LLM
+LLM_BASE_URL=https://api.deepseek.com
+LLM_API_KEY=sk-your-key
+LLM_MODEL=deepseek-chat
+
+# Audio
+AUDIO_SAMPLE_RATE=16000
+AUDIO_CHANNELS=1
+AUDIO_CHUNK_SIZE=3200
+```
+
 ### 5. 启动开发模式
 
-**方式一：一键启动（推荐）**
+推荐直接运行根目录的 dev.bat。
 
-双击项目根目录的 `dev.bat`，自动启动后端+前端。
+它现在会先清理以下残留状态，再启动开发后端和 Tauri 前端：
 
-**方式二：分别启动**
+- 上一次残留的 class-assistant-backend.exe
+- 标题为 ClassAssistant-Backend 的开发后端终端
+- 监听 8765 端口的旧进程
 
-终端 1 - 启动后端：
+也可以手动分别启动：
+
 ```bash
 cd api-service
 .venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8765 --reload
 ```
 
-终端 2 - 启动前端：
 ```bash
 cd app-ui
 npm run tauri dev
 ```
 
-## 🔍 验证与调试
+## 🧭 使用流程
 
-### 验证麦克风
+1. 点击“上传资料”，将 PPT / PDF / Word 解析为可引用文本。
+2. 点击“开始摸鱼”，在启动面板里填写课程名称，并可选择一份 cite 资料。
+3. 后端开始监听课堂音频，按句落盘到 data/class_transcript.txt。
+4. 命中关键词时，前端立即显示警报弹层。
+5. 需要时点击“救场”或“老师讲到哪了”，调用 LLM 生成结果。
+6. 下课后点击“总结”，生成 Markdown 笔记。
 
-后端启动后，访问：
-```
-GET http://127.0.0.1:8765/api/check_mic
-```
+## 🎙️ ASR 模式说明
 
-返回示例：
-```json
-{
-  "status": "ok",
-  "device": "Microphone (Realtek Audio)",
-  "sample_rate": 44100,
-  "channels": 2,
-- 修复打包版数据误写到开发目录：发布包启动前自动清理 8765 端口占用进程，避免前端连到开发后端
-}
-```
+| 模式 | 说明 |
+|------|------|
+| local | 基于 SpeechRecognition + Google Speech API，按句回调，适合直接体验 |
+| mock | 不录音、不识别，适合纯 UI 联调 |
+| dashscope | 阿里云百炼 Fun-ASR |
+| seed-asr | 字节 Seed-ASR，使用 utterances + definite 分句，避免流式累积文本反复写盘 |
 
-- `build.ps1` 一键打包脚本：自动同步版本号 → PyInstaller → Tauri → 组装 release → 健康检查验证 → zip
-- `启动.bat` 智能启动：自动创建 `.env`、清理残留进程、后台运行后端，并使用解压目录下的相对 `data` 目录
-后端启动后访问 Swagger UI：
-```
-http://127.0.0.1:8765/docs
-```
+### 当前转录策略
 
-### 健康检查
+- Local ASR 继续保持“识别完一句追加一行”的本地模式。
+- Seed-ASR 只把 definite 的稳定句子落盘，partial 文本只保存在内存中。
+- 会过滤孤立标点、极短碎片和与近期内容高度相似的重复句。
+- 每 50 条记录会触发一次 LLM 压缩，把旧内容折叠进“历史摘要”块。
 
-```
-GET http://127.0.0.1:8765/api/health
-```
+## 📁 运行时数据
 
-## 📁 项目结构
+| 路径 | 用途 |
+|------|------|
+| data/class_transcript.txt | 当前课堂完整记录，含滚动历史摘要块 |
+| data/current_class_material.txt | 当前选中的参考资料文本 |
+| data/cite/ | 上传资料解析后的候选引用文本 |
+| data/keywords.txt | 用户自定义关键词 |
+| data/summaries/ | 生成的课堂笔记 |
 
-```
-ClassAssistant/
-├── api-service/                # Python FastAPI 后端
-│   ├── main.py                 # 应用入口
-│   ├── routers/                # API 路由
-│   │   ├── ppt_router.py      # 资料上传 (PPT/PDF/Word)
-│   │   ├── monitor_router.py  # 监控启停 + 麦克风检测
-│   │   ├── rescue_router.py   # 紧急救场
-│   │   └── summary_router.py  # 课后总结
-│   ├── services/               # 业务逻辑
-│   │   ├── asr_service.py     # ASR 语音识别 (Local/Mock/DashScope/Seed-ASR)
-│   │   ├── llm_service.py     # LLM 大模型调用
-│   │   ├── monitor_service.py # 核心监控服务
-│   │   ├── ppt_service.py     # 课件解析 (PPT/PDF/Word)
-│   │   ├── keyword_service.py # 关键词检测服务
-│   │   └── transcript_service.py # 转录管理
-│   ├── config.py               # 全局配置 (路径兼容开发/打包模式)
-│   ├── requirements.txt
-│   └── .env                    # 环境变量 (不提交到 Git)
-├── app-ui/                     # Tauri + React 前端
-│   ├── src/
-│   │   ├── App.tsx             # 主组件
-│   │   ├── components/         # UI 组件
-│   │   │   ├── ToolBar.tsx    # 工具按钮
-│   │   │   ├── AlertOverlay.tsx # 点名红色警报
-│   │   │   ├── RescuePanel.tsx  # LLM 救场面板
-│   │   │   ├── CatchupPanel.tsx # 老师讲到哪了面板
-│   │   │   ├── Toast.tsx        # Toast 通知
-│   │   │   └── TitleBar.tsx     # 自定义拖拽标题栏
-│   │   ├── hooks/              # WebSocket 管理
-│   │   └── services/           # API 客户端
-│   └── src-tauri/              # Rust Tauri 配置
-├── data/                       # 运行时数据 (不提交到 Git)
-│   └── keywords.txt            # 监控关键词配置（可编辑）
-├── docs/                       # 开发文档
-├── build.ps1                   # 一键打包脚本 (PowerShell)
-├── build.bat                   # 打包入口 (build.bat v1.0.0)
-├── dev.bat                     # 一键启动开发模式
-└── README.md
+## ⚙️ 调试接口
+
+后端启动后可访问：
+
+- Swagger UI: http://127.0.0.1:8765/docs
+- 健康检查: http://127.0.0.1:8765/api/health
+- 麦克风检测: http://127.0.0.1:8765/api/check_mic
+
+常用 API：
+
+- POST /api/start_monitor
+- POST /api/stop_monitor
+- GET /api/cite_files
+- GET /api/settings
+- POST /api/settings
+- POST /api/emergency_rescue
+- POST /api/catchup
+- POST /api/generate_summary
+
+## 📦 打包发布
+
+```powershell
+./build.ps1 v1.0.1
 ```
 
-## 🎯 使用流程
+打包流程会自动执行：
 
-1. 启动应用后，屏幕角落出现半透明悬浮窗
-2. （可选）编辑 `data/keywords.txt` 自定义监控关键词
-3. 点击 **📄 上传资料** 上传课件 (PPT/PDF/Word)
-4. 点击 **🎣 开始摸鱼** 开启语音监控
-5. 老师点名时 → 🚨 红色警报弹出
-6. 点击 **🆘 救场** → AI 分析课堂内容并给出参考答案
-7. 点击 **📍 老师讲到哪了** → AI 总结课堂进度，快速跟上
-8. 下课后点击 **📝** → 自动生成课堂笔记
+1. 同步前后端版本号。
+2. 用 .venv 中的 PyInstaller 打包 FastAPI 后端。
+3. 用 Tauri 构建桌面端 exe。
+4. 组装 release 目录。
+5. 生成 启动.bat。
+6. 用临时 .env 和独立端口 18765 做后端健康检查。
+7. 输出 zip 压缩包。
 
-## 📋 支持的 ASR 服务
+release/启动.bat 会在启动前清理旧后端，避免前端误连到别的目录下残留服务。
 
-| 模式 | 提供商 | 说明 |
-|------|--------|------|
-| `local` | Google Speech API | 免费语音识别，无需密钥，需联网（默认） |
-| `mock` | - | 空实现，用于 UI 开发测试 |
-| `dashscope` | 阿里云百炼 | Fun-ASR 实时语音识别 |
-| `seed-asr` | 字节跳动 | Seed-ASR 大模型，精度更高 |
+## 📥 免开发环境使用
 
-## 📋 支持的文件格式
+从 Releases 下载 zip，解压后双击 启动.bat。
 
-| 格式 | 扩展名 | 解析库 |
-|------|--------|--------|
-| PowerPoint | `.pptx` | python-pptx |
-| PDF | `.pdf` | pypdf |
-| Word | `.docx` | python-docx |
+首次运行会自动从 backend/.env.example 生成 backend/.env，并提示填写 API Key。保存后再次运行即可。
 
-## 📥 下载安装（免开发环境）
+## ⭐ Star History
 
-如果你不想配置开发环境，可以直接使用打包好的 exe 版本。
+[![Star History Chart](https://api.star-history.com/svg?repos=ouyangyipeng/ClassAssistant&type=Date)](https://star-history.com/#ouyangyipeng/ClassAssistant&Date)
 
-### 1. 下载发布包
+## 📝 更新说明
 
-从 [GitHub Releases](https://github.com/ouyangyipeng/ClassAssistant/releases) 下载最新的 `ClassAssistant-vX.X.X-win-x64.zip`。
+### v1.0.1
 
-### 2. 解压
+- 重构流式转录逻辑，解决 Seed-ASR 重复写盘和标点碎片问题。
+- 增加 50 行滚动摘要压缩，降低长课堂上下文膨胀。
+- 开始监控前新增课程名与 cite 资料选择面板。
+- 资料上传改为保存到 data/cite，由用户在启动监控时选择引用。
+- 新增设置面板，可直接读写后端 .env。
+- dev.bat、启动.bat 和 Tauri 退出流程都增加旧后端清理逻辑。
+- 打包脚本增加发布后端健康检查，当前已可成功产出 v1.0.1 压缩包。
 
-将 zip 解压到任意目录，得到以下结构：
-
-```
-ClassAssistant-vX.X.X/
-├── 启动.bat                     # 双击启动
-├── 上课摸鱼搭子.exe              # 前端桌面窗口
-├── backend/                     # 后端服务
-│   ├── class-assistant-backend.exe
-│   ├── .env.example             # 配置模板
-│   └── _internal/               # 运行时依赖（勿删）
-└── data/                        # 运行时数据
-    ├── keywords.txt             # 监控关键词配置（可编辑）
-    └── summaries/
-```
-
-### 3. 配置 API 密钥
-
-首次运行会自动从 `.env.example` 创建 `backend/.env` 并用记事本打开，填入你的密钥：
-
-```env
-# 必填：ASR 语音识别（任选一种）
-ASR_MODE=local
-
-# 必填：LLM 大模型（救场 + 总结功能需要）
-LLM_BASE_URL=https://api.deepseek.com
-LLM_API_KEY=你的Key
-LLM_MODEL=deepseek-chat
-```
-
-> 若只想测试 UI 不需要真实识别，将 `ASR_MODE` 设为 `mock` 即可，无需其他密钥。
-
-### 4. 启动
-
-双击 **`启动.bat`**，它会：
-1. 自动启动后端服务（无窗口，后台运行）
-2. 等待 3 秒后启动前端桌面悬浮窗
-3. 启动脚本自身自动退出，不留多余窗口
-
-### 5. 使用
-
-- 📄 **上传资料** → 选择课件文件（PPT/PDF/Word）
-- 🎣 **开始摸鱼** → 开启麦克风监听
-- 🚨 检测到点名 → 红色警报弹出
-- 🆘 **救场** → AI 给出参考答案
-- 📝 下课后点击 → 生成课堂笔记
-
-### 常见问题
-
-| 问题 | 解决方案 |
-|------|----------|
-| 后端异常退出 | 在 `backend/` 目录手动运行 `class-assistant-backend.exe` 查看错误信息 |
-| 无法录音 | Windows 设置 → 隐私 → 麦克风 → 允许应用访问 |
-| 前端窗口不出现 | 检查后端是否已启动（浏览器访问 http://127.0.0.1:8765/docs） |
-| 杀毒软件拦截 | exe 是 PyInstaller/Tauri 打包产物，添加信任即可 |
-| libfribidi-0.DLL 错误 | 系统安装了 tesseract 且 DLL 损坏；启动脚本已自动处理，手动运行时可临时移除 tesseract 的 PATH |
-
-## ⚠️ 注意事项
-
-- `.env` 文件包含 API 密钥，**请勿提交到 Git**
-- 仅供学习用途，请合理使用课堂工具
-- 需要网络连接才能使用 ASR 和 LLM 服务
-- 麦克风权限需要在系统设置中开启
-
-## � 更新日志
-
-### v1.0.0 (2026-03-06)
-
-**新增功能**
-- 🎙️ **本地免费 ASR**：新增 `local` 模式，使用 Google Speech API，无需密钥即可使用语音识别（默认模式）
-- 📍 **"老师讲到哪了"**：摸鱼模式下新增进度查询按钮，AI 总结当前课堂进度
-- 🔑 **关键词检测优化**：仅检查转录文件最近两行，避免历史文本反复触发警报
-- 📝 **本地 ASR 逐句记录**：每识别一句话追加新行，不再覆盖式更新
-- 🏗️ **全局路径配置**：新增 `config.py`，统一管理 `DATA_DIR`，兼容开发模式和 PyInstaller 打包模式
-
-**Bug 修复**
-- 修复 SeedASR 在线识别无文字输出：拆分收发为独立线程，解决 send/recv 阻塞问题
-- 修复打包版 `.env` 加载到开发目录：`load_dotenv()` 改为显式指定路径
-- 修复打包版启动脚本端口冲突：启动前自动清理残留后端进程
-- 修复 `dev.bat` 关闭后后端窗口不消失：改用 `cmd /c` + 退出时自动 `taskkill`
-
-**打包优化**
-- `build.ps1` 一键打包脚本：自动同步版本号 → PyInstaller → Tauri → 组装 release → 验证 → zip
-- `启动.bat` 智能启动：自动创建 `.env`、清理残留进程、后台运行后端
-
-## �📄 License
+## License
 
 MIT

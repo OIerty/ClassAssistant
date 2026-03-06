@@ -15,6 +15,7 @@ import os
 import struct
 import threading
 import uuid
+from json import JSONDecodeError
 from typing import Callable, Optional
 
 import pyaudio
@@ -93,9 +94,13 @@ class LocalASR(BaseASR):
 
         recognizer = sr.Recognizer()
         # 降低能量阈值 & 加快停顿判定，提升响应速度
-        recognizer.energy_threshold = 300
+        recognizer.energy_threshold = 220
         recognizer.dynamic_energy_threshold = True
-        recognizer.pause_threshold = 0.8
+        recognizer.dynamic_energy_adjustment_damping = 0.12
+        recognizer.dynamic_energy_adjustment_ratio = 1.4
+        recognizer.pause_threshold = 0.45
+        recognizer.phrase_threshold = 0.2
+        recognizer.non_speaking_duration = 0.25
 
         mic = sr.Microphone(sample_rate=SAMPLE_RATE)
 
@@ -109,7 +114,7 @@ class LocalASR(BaseASR):
                         audio = recognizer.listen(
                             source,
                             timeout=5,            # 最长等待 5 秒
-                            phrase_time_limit=15,  # 单段最长 15 秒
+                            phrase_time_limit=10,  # 单段最长 10 秒
                         )
                     except sr.WaitTimeoutError:
                         continue
@@ -287,6 +292,7 @@ class SeedASR(BaseASR):
         self._stream = None
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._seen_utterances: set[tuple[int | None, int | None, str]] = set()
 
     # ---- 二进制协议辅助 ----
 
@@ -356,10 +362,21 @@ class SeedASR(BaseASR):
             payload_size = struct.unpack(">I", data[8:12])[0]
             payload_raw = data[12:12 + payload_size]
 
+            if payload_size <= 0 or not payload_raw:
+                return None
+
             if compress == 0x1:
                 payload_raw = gzip.decompress(payload_raw)
 
-            return json.loads(payload_raw)
+            if not payload_raw:
+                return None
+
+            try:
+                return json.loads(payload_raw)
+            except JSONDecodeError:
+                preview = payload_raw[:80].decode("utf-8", errors="replace")
+                logger.debug("[SeedASR] skip non-json response payload: %s", preview)
+                return None
         except Exception:
             logger.exception("[SeedASR] failed to parse server response")
             return None
@@ -367,6 +384,7 @@ class SeedASR(BaseASR):
     def start(self):
         self._running = True
         self._stop_event.clear()
+        self._seen_utterances.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         logger.info("[SeedASR] started")
@@ -378,10 +396,36 @@ class SeedASR(BaseASR):
         try:
             resp = self._parse_server_response(resp_data)
             if resp and isinstance(resp.get("result"), dict):
-                text = resp["result"].get("text", "")
-                if text:
-                    logger.info("[SeedASR] 识别文本: %s", text[:80])
+                result = resp["result"]
+                utterances = result.get("utterances") or []
+
+                for utterance in utterances:
+                    text = (utterance.get("text") or "").strip()
+                    if not text or not utterance.get("definite"):
+                        continue
+
+                    utterance_key = (
+                        utterance.get("start_time"),
+                        utterance.get("end_time"),
+                        text,
+                    )
+                    if utterance_key in self._seen_utterances:
+                        continue
+
+                    self._seen_utterances.add(utterance_key)
+                    logger.info("[SeedASR] definite utterance: %s", text[:80])
                     self.on_text(text, True)
+
+                if utterances:
+                    last_utterance = utterances[-1]
+                    partial_text = (last_utterance.get("text") or "").strip()
+                    if partial_text and not last_utterance.get("definite"):
+                        self.on_text(partial_text, False)
+                else:
+                    text = (result.get("text") or "").strip()
+                    if text:
+                        logger.info("[SeedASR] partial text: %s", text[:80])
+                        self.on_text(text, False)
         except Exception:
             logger.exception("[SeedASR] error processing server response")
 
@@ -449,7 +493,11 @@ class SeedASR(BaseASR):
                     "model_name": "bigmodel",
                     "enable_punc": True,
                     "enable_itn": True,
-                    "result_type": "full",
+                    "show_utterances": True,
+                    # 在流式优化版中显式开启静音判停，让一句结束后尽快产出 definite 分句。
+                    "end_window_size": 800,
+                    "force_to_speech_time": 1000,
+                    "result_type": "single",
                 },
             }
             self._ws.send(self._build_full_request(full_req_payload), opcode=0x2)

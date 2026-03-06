@@ -5,6 +5,7 @@
 """
 
 import asyncio
+from difflib import SequenceMatcher
 import json
 import logging
 import os
@@ -17,12 +18,16 @@ from fastapi import WebSocket
 
 from config import DATA_DIR
 from services.asr_service import create_asr, BaseASR, LocalASR
+from services.llm_service import LLMService
+from services.transcript_service import TranscriptService
 
 logger = logging.getLogger(__name__)
 
 
 class MonitorService:
     """课堂监控服务 - 核心后台服务"""
+
+    SUMMARY_TRIGGER_LINES = 50
 
     def __init__(self):
         # 关键词文件路径
@@ -46,11 +51,23 @@ class MonitorService:
 
         # 转录文件路径
         self.transcript_path = os.path.join(DATA_DIR, "class_transcript.txt")
+        self._llm_service = LLMService()
+        self._state_lock = threading.RLock()
 
-        # ASR 增量文本追踪（避免关键词重复触发）
+        # 会话状态
+        self._session_start_marker: str = ""
+        self._session_end_marker: str = ""
+        self._course_name: str = ""
+        self._active_material_name: str = ""
+        self._partial_line: tuple[str, str] | None = None
+        self._recent_entries: List[tuple[str, str]] = []
+        self._recent_normalized_entries: List[str] = []
+        self._rolling_summary: str = ""
+        self._summary_source_entries: List[tuple[str, str]] = []
+        self._summary_task_running: bool = False
+
+        # ASR 增量文本追踪
         self._last_asr_text: str = ""
-        # 转录文件中"已固定"的字节位置（活动行起始处）
-        self._live_line_pos: int = 0
 
     def get_all_keywords(self) -> List[str]:
         """获取所有关键词（内置 + 自定义）"""
@@ -127,7 +144,7 @@ class MonitorService:
                 matched.append(keyword)
         return matched
 
-    async def start(self) -> dict:
+    async def start(self, course_name: str = "", material_name: str = "") -> dict:
         """启动监控服务"""
         if self.is_monitoring:
             return {"status": "already_running", "message": "监控服务已在运行中"}
@@ -139,16 +156,10 @@ class MonitorService:
 
         # 重新加载关键词文件
         self._load_keywords()
-        # 重置增量追踪状态
-        self._last_asr_text = ""
-        self._live_line_pos = 0
-        # 已固定到转录文件的 ASR 文本长度
-        self._finalized_len: int = 0
-
-        # 清空/初始化转录文件，记录活动行起始位置
-        with open(self.transcript_path, "w", encoding="utf-8") as f:
-            f.write(f"=== 课堂记录 开始于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n\n")
-            self._live_line_pos = f.tell()
+        self._course_name = course_name.strip()
+        self._active_material_name = material_name.strip()
+        self._reset_session_state()
+        self._flush_transcript_file()
 
         # 创建 ASR 实例并启动
         # 本地 ASR 使用独立的回调（每句新建一行），线上 ASR 使用流式回调
@@ -171,37 +182,162 @@ class MonitorService:
             self._asr.stop()
             self._asr = None
 
-        # 固定最后的活动行（如果有未固定的内容）
-        remaining = self._last_asr_text[self._finalized_len:].strip()
-        if remaining:
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            try:
-                with open(self.transcript_path, "r+", encoding="utf-8") as f:
-                    f.seek(self._live_line_pos)
-                    f.truncate()
-                    f.write(f"[{timestamp}] {remaining}\n")
-            except Exception:
-                logger.exception("写入转录文件失败")
+        with self._state_lock:
+            if self._partial_line and self._partial_line[1].strip():
+                timestamp, text = self._partial_line
+                self._append_entry_locked(timestamp, text)
+                self._partial_line = None
 
-        # 写入结束标记
-        with open(self.transcript_path, "a", encoding="utf-8") as f:
-            f.write(f"\n\n=== 课堂记录 结束于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+            self._session_end_marker = (
+                f"=== 课堂记录 结束于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ==="
+            )
+            self._flush_transcript_file()
 
         return {"status": "stopped", "message": "监控已停止"}
 
-    def _check_last_lines_keywords(self) -> List[str]:
-        """
-        只检查转录文件最近两行的关键词，避免历史文本反复触发。
-        """
+    def _reset_session_state(self):
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with self._state_lock:
+            self._session_start_marker = f"=== 课堂记录 开始于 {now} ==="
+            self._session_end_marker = ""
+            self._partial_line = None
+            self._recent_entries = []
+            self._recent_normalized_entries = []
+            self._rolling_summary = ""
+            self._summary_source_entries = []
+            self._summary_task_running = False
+            self._last_asr_text = ""
+
+    def _normalize_text(self, text: str) -> str:
+        text = re.sub(r"\s+", " ", text or "")
+        return text.strip()
+
+    def _normalize_for_dedupe(self, text: str) -> str:
+        normalized = self._normalize_text(text)
+        return normalized.rstrip("。？！；!?;，,、 ")
+
+    def _is_meaningful_text(self, text: str) -> bool:
+        normalized = self._normalize_for_dedupe(text)
+        if len(normalized) < 2:
+            return False
+
+        compact = re.sub(r"[\s\W_]+", "", normalized, flags=re.UNICODE)
+        if len(compact) < 2:
+            return False
+
+        return bool(re.search(r"[A-Za-z0-9\u4e00-\u9fff]", compact))
+
+    def _is_near_duplicate_locked(self, text: str) -> bool:
+        dedupe_text = self._normalize_for_dedupe(text)
+        if not dedupe_text:
+            return True
+
+        for recent in self._recent_normalized_entries[-8:]:
+            if dedupe_text == recent:
+                return True
+
+            shorter_len = min(len(dedupe_text), len(recent))
+            longer_len = max(len(dedupe_text), len(recent))
+
+            if shorter_len >= 4 and (dedupe_text in recent or recent in dedupe_text):
+                if shorter_len / longer_len >= 0.8:
+                    return True
+
+            if shorter_len >= 6:
+                similarity = SequenceMatcher(None, dedupe_text, recent).ratio()
+                if similarity >= 0.88:
+                    return True
+
+        return False
+
+    def _append_entry_locked(self, timestamp: str, text: str) -> bool:
+        cleaned = self._normalize_text(text)
+        if not cleaned or not self._is_meaningful_text(cleaned):
+            return False
+
+        dedupe_text = self._normalize_for_dedupe(cleaned)
+        if self._is_near_duplicate_locked(cleaned):
+            return False
+
+        self._recent_entries.append((timestamp, cleaned))
+        self._summary_source_entries.append((timestamp, cleaned))
+        if dedupe_text:
+            self._recent_normalized_entries.append(dedupe_text)
+            self._recent_normalized_entries = self._recent_normalized_entries[-12:]
+        return True
+
+    def _recent_keyword_window_locked(self) -> str:
+        recent_text = [text for _, text in self._recent_entries[-2:]]
+        return " ".join(recent_text).strip()
+
+    def _flush_transcript_file(self):
+        lines: List[str] = [self._session_start_marker, ""]
+
+        if self._course_name:
+            lines.append(f"课程：{self._course_name}")
+        if self._active_material_name:
+            lines.append(f"参考资料：{self._active_material_name}")
+        if self._course_name or self._active_material_name:
+            lines.append("")
+
+        if self._rolling_summary:
+            lines.extend([
+                TranscriptService.SUMMARY_START_MARKER,
+                self._rolling_summary.strip(),
+                TranscriptService.SUMMARY_END_MARKER,
+                "",
+            ])
+
+        for timestamp, text in self._summary_source_entries:
+            lines.append(f"[{timestamp}] {text}")
+
+        if self._session_end_marker:
+            lines.extend(["", self._session_end_marker])
+
         try:
-            with open(self.transcript_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            # 取最后两行有效内容
-            recent = [l.strip() for l in lines[-2:] if l.strip() and not l.startswith("===")]
-            text = " ".join(recent)
-            return self._check_keywords(text) if text else []
+            with open(self.transcript_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines).rstrip() + "\n")
         except Exception:
-            return []
+            logger.exception("写入转录文件失败")
+
+    def _schedule_summary_locked(self):
+        if self._summary_task_running or not self._loop:
+            return
+        if len(self._summary_source_entries) < self.SUMMARY_TRIGGER_LINES:
+            return
+
+        chunk = list(self._summary_source_entries[:self.SUMMARY_TRIGGER_LINES])
+        previous_summary = self._rolling_summary
+        self._summary_task_running = True
+        asyncio.run_coroutine_threadsafe(
+            self._run_summary_task(previous_summary, chunk),
+            self._loop,
+        )
+
+    async def _run_summary_task(
+        self,
+        previous_summary: str,
+        chunk: List[tuple[str, str]],
+    ):
+        chunk_lines = [f"[{timestamp}] {text}" for timestamp, text in chunk]
+        try:
+            new_summary = await self._llm_service.compress_monitoring_progress(
+                previous_summary=previous_summary,
+                recent_lines=chunk_lines,
+            )
+        except Exception:
+            with self._state_lock:
+                self._summary_task_running = False
+            return
+
+        with self._state_lock:
+            expected_chunk = self._summary_source_entries[:len(chunk)]
+            if expected_chunk == chunk:
+                self._rolling_summary = new_summary.strip()
+                del self._summary_source_entries[:len(chunk)]
+            self._summary_task_running = False
+            self._flush_transcript_file()
+            self._schedule_summary_locked()
 
     def _on_local_asr_text(self, text: str, is_final: bool):
         """
@@ -213,20 +349,22 @@ class MonitorService:
 
         timestamp = datetime.now().strftime("%H:%M:%S")
 
-        # 追加新行
-        try:
-            with open(self.transcript_path, "a", encoding="utf-8") as f:
-                f.write(f"[{timestamp}] {text.strip()}\n")
-        except Exception:
-            logger.exception("写入转录文件失败")
+        with self._state_lock:
+            appended = self._append_entry_locked(timestamp, text)
+            if appended:
+                self._flush_transcript_file()
+                self._schedule_summary_locked()
+            keyword_text = self._recent_keyword_window_locked()
 
-        # 关键词检测：只检查最近两行
-        matched = self._check_last_lines_keywords()
+        if not appended:
+            return
+
+        matched = self._check_keywords(keyword_text)
         if matched and self._loop:
             alert = {
                 "type": "keyword_alert",
                 "keywords": matched,
-                "text": text,
+                "text": self._normalize_text(text),
                 "timestamp": timestamp,
             }
             asyncio.run_coroutine_threadsafe(
@@ -237,10 +375,8 @@ class MonitorService:
         """
         ASR 识别回调 (可能从非主线程调用) —— 用于线上流式 ASR。
 
-        实时更新转录文件：
-        - 每次回调都更新当前活动行（原地覆盖）
-        - 遇到句末标点时固定该行，开始新的活动行
-        - 关键词检测只检查转录文件最近两行，避免重复触发
+        仅把最终稳定的句子写入转录文件。
+        流式修正中的 partial 文本只暂存在内存中，停止监控时再兜底写入一次。
         """
         if not self.is_monitoring or not text.strip():
             return
@@ -248,72 +384,35 @@ class MonitorService:
         timestamp = datetime.now().strftime("%H:%M:%S")
         logger.info("[ASR] on_text (len=%d): %s", len(text), text[:60])
 
-        # 计算增量文本（新增部分）
-        prev = self._last_asr_text
-        if len(text) >= len(prev) and text[:len(prev)] == prev:
-            delta = text[len(prev):]
-        else:
-            delta = text
-            self._finalized_len = 0
-        self._last_asr_text = text
+        matched: List[str] = []
+        alert_text = ""
 
-        # 实时更新转录文件
-        self._write_transcript(text, timestamp)
+        with self._state_lock:
+            cleaned = self._normalize_text(text)
+            self._last_asr_text = cleaned
 
-        # 关键词检测：只检查转录文件最近两行
-        if delta.strip():
-            matched = self._check_last_lines_keywords()
-            if matched and self._loop:
-                alert = {
-                    "type": "keyword_alert",
-                    "keywords": matched,
-                    "text": text,
-                    "timestamp": timestamp,
-                }
-                asyncio.run_coroutine_threadsafe(
-                    self._broadcast_alert(alert), self._loop
-                )
+            appended_any = False
+            if is_final:
+                self._partial_line = None
+                appended_any = self._append_entry_locked(timestamp, cleaned)
+            elif self._is_meaningful_text(cleaned) and not self._is_near_duplicate_locked(cleaned):
+                self._partial_line = (timestamp, cleaned)
 
-    def _write_transcript(self, full_text: str, timestamp: str):
-        """
-        实时更新转录文件。
+            if appended_any:
+                self._flush_transcript_file()
 
-        策略：
-        - 从 full_text[_finalized_len:] 中检查是否有新的句子结束标点
-        - 有则固定这些句子为永久行，更新 _live_line_pos
-        - 剩余未完成的部分作为活动行，原地覆盖（seek + truncate）
-        """
-        pending = full_text[self._finalized_len:]
-        if not pending:
-            return
+            if appended_any:
+                alert_text = self._recent_keyword_window_locked()
+                matched = self._check_keywords(alert_text)
+                self._schedule_summary_locked()
 
-        try:
-            with open(self.transcript_path, "r+", encoding="utf-8") as f:
-                # 定位到活动行起始位置，截断后面的内容
-                f.seek(self._live_line_pos)
-                f.truncate()
-
-                # 在 pending 中找所有句子边界
-                last_boundary = -1
-                for i, ch in enumerate(pending):
-                    if ch in "。？！；\n":
-                        last_boundary = i
-
-                if last_boundary >= 0:
-                    # 固定已完成的句子
-                    finalized = pending[:last_boundary + 1].strip()
-                    if finalized:
-                        f.write(f"[{timestamp}] {finalized}\n")
-                    self._finalized_len += last_boundary + 1
-                    # 更新活动行起始位置
-                    self._live_line_pos = f.tell()
-                    # 剩余未完成部分
-                    remainder = pending[last_boundary + 1:]
-                else:
-                    remainder = pending
-
-                # 写入活动行（未完成的部分，下次会被覆盖）
-                if remainder.strip():
-                    f.write(f"[{timestamp}] {remainder.strip()}")
-        except Exception:
-            logger.exception("写入转录文件失败")
+        if matched and self._loop:
+            alert = {
+                "type": "keyword_alert",
+                "keywords": matched,
+                "text": alert_text,
+                "timestamp": timestamp,
+            }
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_alert(alert), self._loop
+            )

@@ -10,6 +10,8 @@ import ToolBar from "./components/ToolBar";
 import AlertOverlay from "./components/AlertOverlay";
 import RescuePanel from "./components/RescuePanel";
 import CatchupPanel from "./components/CatchupPanel";
+import StartMonitorPanel from "./components/StartMonitorPanel";
+import SettingsPanel from "./components/SettingsPanel";
 import ToastContainer, { type ToastMessage } from "./components/Toast";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
@@ -28,6 +30,9 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [showRescuePanel, setShowRescuePanel] = useState(false);
   const [showCatchupPanel, setShowCatchupPanel] = useState(false);
+  const [showStartMonitorPanel, setShowStartMonitorPanel] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [citeRefreshToken, setCiteRefreshToken] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // WebSocket 连接
@@ -54,6 +59,7 @@ export default function App() {
       try {
         const res = await uploadPPT(file);
         addToast(res.message, "success");
+        setCiteRefreshToken((prev) => prev + 1);
       } catch (err) {
         addToast(
           `上传失败: ${err instanceof Error ? err.message : "未知错误"}`,
@@ -87,11 +93,7 @@ export default function App() {
           /* 忽略窗口操作错误 */
         }
       } else {
-        // 启动监控
-        await startMonitor();
-        connect(); // 建立 WebSocket 接收警报
-        setIsMonitoring(true);
-        addToast("开始摸鱼模式 🎣", "success");
+        setShowStartMonitorPanel(true);
       }
     } catch (err) {
       addToast(
@@ -102,6 +104,20 @@ export default function App() {
       setIsLoading(false);
     }
   }, [isMonitoring, connect, disconnect, addToast]);
+
+  const handleStartMonitorConfirm = useCallback(
+    async ({ courseName, citeFilename }: { courseName: string; citeFilename: string | null }) => {
+      await startMonitor({
+        course_name: courseName,
+        cite_filename: citeFilename,
+      });
+      connect();
+      setIsMonitoring(true);
+      setShowStartMonitorPanel(false);
+      addToast(courseName ? `开始摸鱼模式 🎣 ${courseName}` : "开始摸鱼模式 🎣", "success");
+    },
+    [connect, addToast]
+  );
 
   // ---- 救场 ----
   const handleRescue = useCallback(() => {
@@ -124,6 +140,14 @@ export default function App() {
     setShowCatchupPanel(false);
   }, []);
 
+  const handleOpenSettings = useCallback(() => {
+    setShowSettingsPanel(true);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    setShowSettingsPanel(false);
+  }, []);
+
   // ---- 课后总结 ----
   const handleSummary = useCallback(async () => {
     setIsLoading(true);
@@ -141,12 +165,12 @@ export default function App() {
   }, [addToast]);
 
   return (
-    <div className="relative w-full h-screen bg-gray-900/80 backdrop-blur-xl rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+    <div className="app-shell relative h-full w-full overflow-hidden rounded-[var(--window-radius)] border border-white/10 bg-gray-900/80 shadow-2xl backdrop-blur-xl">
       {/* 标题栏 */}
       <TitleBar isMonitoring={isMonitoring} />
 
       {/* 工具栏（非救场/进度模式时显示） */}
-      {!showRescuePanel && !showCatchupPanel && (
+      {!showRescuePanel && !showCatchupPanel && !showStartMonitorPanel && !showSettingsPanel && (
         <ToolBar
           isMonitoring={isMonitoring}
           isLoading={isLoading}
@@ -154,8 +178,22 @@ export default function App() {
           onToggleMonitor={handleToggleMonitor}
           onSummary={handleSummary}
           onCatchup={handleCatchup}
+          onSettings={handleOpenSettings}
         />
       )}
+
+      <StartMonitorPanel
+        visible={showStartMonitorPanel}
+        onClose={() => setShowStartMonitorPanel(false)}
+        onConfirm={handleStartMonitorConfirm}
+        refreshToken={citeRefreshToken}
+      />
+
+      <SettingsPanel
+        visible={showSettingsPanel}
+        onClose={handleCloseSettings}
+        onSaved={(message) => addToast(message, "success")}
+      />
 
       {/* 救场面板 */}
       <RescuePanel visible={showRescuePanel} onClose={handleCloseRescue} />

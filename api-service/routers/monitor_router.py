@@ -8,11 +8,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Optional
 from services.monitor_service import MonitorService
+from services.transcript_service import TranscriptService
 
 router = APIRouter()
 
 # 全局监控服务实例
 monitor_service = MonitorService()
+transcript_service = TranscriptService()
 
 
 class KeywordUpdateRequest(BaseModel):
@@ -20,16 +22,34 @@ class KeywordUpdateRequest(BaseModel):
     keywords: List[str]  # 用户自定义关键词列表
 
 
+class StartMonitorRequest(BaseModel):
+    course_name: str = ""
+    cite_filename: Optional[str] = None
+
+
 @router.post("/start_monitor")
-async def start_monitor():
+async def start_monitor(request: StartMonitorRequest):
     """
     开始摸鱼模式
     - 启动麦克风录音
     - 启动 ASR 语音转文字
     - 启动关键词监控
     """
-    result = await monitor_service.start()
+    material_name = request.cite_filename or ""
+    transcript_service.activate_cite_file(material_name or None)
+    result = await monitor_service.start(
+        course_name=request.course_name,
+        material_name=material_name,
+    )
     return result
+
+
+@router.get("/cite_files")
+async def get_cite_files():
+    return {
+        "status": "success",
+        "items": transcript_service.list_cite_files(),
+    }
 
 
 @router.post("/stop_monitor")

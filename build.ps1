@@ -14,7 +14,6 @@ $ErrorActionPreference = 'Stop'
 
 # ---------- 配置（按需修改） ----------
 $VENV_DIR = Join-Path $PSScriptRoot "api-service\.venv"
-$VENV_PYTHON = Join-Path $VENV_DIR "Scripts\python.exe"
 $VENV_PYINSTALLER = Join-Path $VENV_DIR "Scripts\pyinstaller.exe"
 # --------------------------------------
 
@@ -182,7 +181,7 @@ if not exist "%~dp0data\summaries" mkdir "%~dp0data\summaries"
 :: 清理 PATH 中的 tesseract，避免损坏的 DLL 被加载
 set "PATH=%PATH:tesseract=%"
 
-:: 清理占用 8765 端口的所有进程（无论 dev 还是上次残留）
+:: 启动前清理上次残留的后端，避免前端连到错误目录下的旧服务
 taskkill /IM class-assistant-backend.exe /F >nul 2>&1
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8765 " ^| findstr "LISTENING"') do taskkill /PID %%a /F >nul 2>&1
 timeout /t 1 >nul

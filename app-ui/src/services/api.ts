@@ -14,6 +14,7 @@ export async function uploadPPT(file: File): Promise<{
   status: string;
   message: string;
   text_length: number;
+  cite_filename: string;
 }> {
   const formData = new FormData();
   formData.append("file", file);
@@ -30,11 +31,22 @@ export async function uploadPPT(file: File): Promise<{
   return res.json();
 }
 
+export interface StartMonitorPayload {
+  course_name: string;
+  cite_filename?: string | null;
+}
+
 /**
  * 启动摸鱼监控模式
  */
-export async function startMonitor(): Promise<{ status: string; message: string }> {
-  const res = await fetch(`${API_BASE}/start_monitor`, { method: "POST" });
+export async function startMonitor(
+  payload: StartMonitorPayload
+): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/start_monitor`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) throw new Error("启动监控失败");
   return res.json();
 }
@@ -113,5 +125,40 @@ export async function getKeywords(): Promise<{
 }> {
   const res = await fetch(`${API_BASE}/keywords`);
   if (!res.ok) throw new Error("获取关键词失败");
+  return res.json();
+}
+
+export async function getCiteFiles(): Promise<{
+  status: string;
+  items: Array<{ filename: string; updated_at: string; size: number }>;
+}> {
+  const res = await fetch(`${API_BASE}/cite_files`);
+  if (!res.ok) throw new Error("获取资料列表失败");
+  return res.json();
+}
+
+export async function getSettings(): Promise<{
+  status: string;
+  content: string;
+  path: string;
+}> {
+  const res = await fetch(`${API_BASE}/settings`);
+  if (!res.ok) throw new Error("读取设置失败");
+  return res.json();
+}
+
+export async function saveSettings(content: string): Promise<{
+  status: string;
+  message: string;
+}> {
+  const res = await fetch(`${API_BASE}/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "保存设置失败");
+  }
   return res.json();
 }
