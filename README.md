@@ -1,5 +1,7 @@
 # 🦊 课狐 ClassFox - 你的上课摸鱼搭子 🐟
 
+> 📚 项目文档：<https://ouyangyipeng.github.io/ClassAssistant/>
+
 <!-- markdownlint-disable MD033 -->
 <div align="center">
   <img src="docs/img/logo透明背景.png" alt="课狐 ClassFox Logo" width="128" />
@@ -19,7 +21,8 @@
 >
 > 以耳廓狐为灵感的小体量课堂悬浮助手：资源占用轻，专门盯住你最容易错过的点名、提问和进度变化。
 
-### 🚀 v1.2.0 近期优化
+## 🚀 v1.2.0 近期优化
+
 - **品牌升级**：项目产品名更新为“课狐 ClassFox”，强调“小体量 + 高听感”的课堂辅助定位。
 - **单入口发布**：release 根目录只保留一个 课狐ClassFox.exe，后端由主程序静默拉起，避免首次使用误点多个入口。
 - **启动体验升级**：新增居中启动遮罩与 logo 动画，启动阶段不再裸露命令行窗口。
@@ -33,38 +36,20 @@
 
 ### 摸鱼监控状态
 
-<p align="center">
-  <img
-    src="docs/img/%E6%91%B8%E9%B1%BC%E7%8A%B6%E6%80%81.gif"
-    alt="摸鱼监控状态演示"
-    width="860"
-  />
-</p>
+![摸鱼监控状态演示](docs/img/%E6%91%B8%E9%B1%BC%E7%8A%B6%E6%80%81.gif)
 
 ### 点名警报与 AI 救场
 
-<p align="center">
-  <img
-    src="docs/img/%E7%82%B9%E5%90%8D%E8%AD%A6%E6%8A%A5%E4%B8%8Eai%E5%9B%9E%E7%AD%94.gif"
-    alt="点名警报与 AI 救场演示"
-    width="860"
-  />
-</p>
+![点名警报与 AI 救场演示](docs/img/%E7%82%B9%E5%90%8D%E8%AD%A6%E6%8A%A5%E4%B8%8Eai%E5%9B%9E%E7%AD%94.gif)
 
 ### 老师讲到哪儿了
 
-<p align="center">
-  <img
-    src="docs/img/%E8%80%81%E5%B8%88%E8%AE%B2%E5%88%B0%E5%93%AA%E5%84%BF%E4%BA%86.gif"
-    alt="老师讲到哪儿了演示"
-    width="860"
-  />
-</p>
+![老师讲到哪儿了演示](docs/img/%E8%80%81%E5%B8%88%E8%AE%B2%E5%88%B0%E5%93%AA%E5%84%BF%E4%BA%86.gif)
 
 ## ✨ 核心功能
 
 | 功能 | 说明 |
-|------|------|
+| ------ | ------ |
 | 🎙️ 实时语音监控 | Local ASR / Seed-ASR / DashScope / Mock 多模式切换 |
 | 🧹 去重转录 | 流式识别结果按句落盘，过滤重复、碎片标点和相近修正文 |
 | 🧠 滚动课堂摘要 | 每累计 50 条课堂记录，自动压缩为一段历史摘要，减小上下文体积 |
@@ -182,7 +167,7 @@ npm run tauri dev
 ## 🎙️ ASR 模式说明
 
 | 模式 | 说明 |
-|------|------|
+| ------ | ------ |
 | local | 基于 SpeechRecognition + Google Speech API，按句回调，适合直接体验 |
 | mock | 不录音、不识别，适合纯 UI 联调 |
 | dashscope | 阿里云百炼 Fun-ASR |
@@ -198,7 +183,7 @@ npm run tauri dev
 ## 📁 运行时数据
 
 | 路径 | 用途 |
-|------|------|
+| ------ | ------ |
 | data/class_transcript.txt | 当前课堂完整记录，含滚动历史摘要块 |
 | data/current_class_material.txt | 当前选中的参考资料文本 |
 | data/cite/ | 上传资料解析后的候选引用文本 |
@@ -209,9 +194,9 @@ npm run tauri dev
 
 后端启动后可访问：
 
-- Swagger UI: http://127.0.0.1:8765/docs
-- 健康检查: http://127.0.0.1:8765/api/health
-- 麦克风检测: http://127.0.0.1:8765/api/check_mic
+- Swagger UI: <http://127.0.0.1:8765/docs>
+- 健康检查: <http://127.0.0.1:8765/api/health>
+- 麦克风检测: <http://127.0.0.1:8765/api/check_mic>
 
 常用 API：
 
