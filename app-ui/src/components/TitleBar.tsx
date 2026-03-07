@@ -39,8 +39,8 @@ export default function TitleBar({ isMonitoring, isPaused, courseName }: TitleBa
     >
       {/* 左侧标题 - 也作为拖拽区域 */}
       <div data-tauri-drag-region className="flex items-center gap-1.5 text-xs text-white/80 pointer-events-none">
-        <span className="text-sm">🐟</span>
-        <span className="font-medium tracking-wide">摸鱼搭子</span>
+        <span className="text-sm">🦊</span>
+        <span className="font-medium tracking-wide">课狐 ClassFox</span>
         {isMonitoring && (
           <span className={`inline-block h-1.5 w-1.5 rounded-full ${isPaused ? "bg-amber-300" : "bg-green-400 animate-pulse"}`} />
         )}

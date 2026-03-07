@@ -139,23 +139,6 @@ export default function SettingsPanel({ visible, onClose, onSaved }: SettingsPan
   );
 
   useEffect(() => {
-    (async () => {
-      try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { LogicalSize } = await import("@tauri-apps/api/dpi");
-        const win = getCurrentWindow();
-        if (visible) {
-          await win.setSize(new LogicalSize(520, 520));
-        } else {
-          // 关闭时逻辑由父组件处理或依赖 ToolBar 重置
-        }
-      } catch {
-        /* 忽略 */
-      }
-    })();
-  }, [visible]);
-
-  useEffect(() => {
     if (!visible) return;
 
     setLoading(true);
@@ -173,16 +156,14 @@ export default function SettingsPanel({ visible, onClose, onSaved }: SettingsPan
   }, [visible]);
 
   useEffect(() => {
+    if (!visible) return;
+
     (async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const { LogicalSize } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
-        if (visible) {
-          await win.setSize(new LogicalSize(520, 500));
-        } else {
-          // 关闭时的尺寸由 ToolBar 逻辑自动接管
-        }
+        await win.setSize(new LogicalSize(480, 520));
       } catch {
         /* 忽略窗口操作错误 */
       }
@@ -212,145 +193,147 @@ export default function SettingsPanel({ visible, onClose, onSaved }: SettingsPan
   };
 
   return (
-    <div className="flex h-full flex-col gap-3 overflow-hidden p-4 text-white/85 animate-in fade-in duration-300">
-      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+    <div className="flex h-full flex-col overflow-hidden p-4 text-white/85 animate-in fade-in duration-300">
+      <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
         <h2 className="text-sm font-semibold text-white">系统设置</h2>
         {path && <p className="text-[10px] text-white/35 truncate max-w-[200px]">{path}</p>}
       </div>
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center py-10 text-sm text-white/55">正在读取设置...</div>
-      ) : (
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10">
-          {ENV_SECTIONS.map((section) => (
-            <section key={section.title} className="rounded-2xl border border-white/10 bg-white/6 p-3">
-              <h3 className="mb-2 text-[11px] font-semibold text-white/90">{section.title}</h3>
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
+        {loading ? (
+          <div className="flex flex-1 items-center justify-center py-10 text-sm text-white/55">正在读取设置...</div>
+        ) : (
+          <div className="flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 pb-16">
+            {ENV_SECTIONS.map((section) => (
+              <section key={section.title} className="rounded-[var(--window-radius)] border border-white/10 bg-white/6 p-3">
+                <h3 className="mb-2 text-[11px] font-semibold text-white/90">{section.title}</h3>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {section.fields.map((field) => (
+                    <label key={field.key} className="flex flex-col gap-1">
+                      <span className="text-[10px] text-white/58">{field.label}</span>
+                      {field.type === "select" ? (
+                        <select
+                          value={envValues[field.key] || ""}
+                          onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50"
+                        >
+                          <option value="">请选择</option>
+                          {field.options?.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={field.type ?? "text"}
+                          value={envValues[field.key] || ""}
+                          onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50 focus:bg-white/8"
+                        />
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            <section className="rounded-[var(--window-radius)] border border-white/10 bg-white/6 p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-[11px] font-semibold text-white/90">前端外观</h3>
+                  <p className="mt-0.5 text-[10px] text-white/45">{styleSummary}</p>
+                </div>
+                <div className={`style-preview style-preview--${styleSettings.backgroundPreset} h-8 w-16 rounded-lg border border-white/10`} />
+              </div>
+
               <div className="grid gap-3 md:grid-cols-2">
-                {section.fields.map((field) => (
-                  <label key={field.key} className="flex flex-col gap-1">
-                    <span className="text-[10px] text-white/58">{field.label}</span>
-                    {field.type === "select" ? (
-                      <select
-                        value={envValues[field.key] || ""}
-                        onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50"
-                      >
-                        <option value="">请选择</option>
-                        {field.options?.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type={field.type ?? "text"}
-                        value={envValues[field.key] || ""}
-                        onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                        placeholder={field.placeholder}
-                        className="rounded-xl border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50 focus:bg-white/8"
-                      />
-                    )}
-                  </label>
-                ))}
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-white/58">背景主题</span>
+                  <select
+                    value={styleSettings.backgroundPreset}
+                    onChange={(e) => setStyleSettings((prev) => ({ ...prev, backgroundPreset: e.target.value as UiStyleSettings["backgroundPreset"] }))}
+                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50"
+                  >
+                    <option value="ocean">Ocean</option>
+                    <option value="sunset">Sunset</option>
+                    <option value="forest">Forest</option>
+                    <option value="slate">Slate</option>
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-white/58">圆角 {styleSettings.windowRadius}px</span>
+                  <input
+                    type="range"
+                    min="10"
+                    max="28"
+                    value={styleSettings.windowRadius}
+                    onChange={(e) => setStyleSettings((prev) => ({ ...prev, windowRadius: Number(e.target.value) }))}
+                    className="h-1.5"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-white/58">透明度 {Math.round(styleSettings.shellOpacity * 100)}%</span>
+                  <input
+                    type="range"
+                    min="55"
+                    max="95"
+                    value={Math.round(styleSettings.shellOpacity * 100)}
+                    onChange={(e) => setStyleSettings((prev) => ({ ...prev, shellOpacity: Number(e.target.value) / 100 }))}
+                    className="h-1.5"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] text-white/58">缩放 {styleSettings.fontScale.toFixed(2)}x</span>
+                  <input
+                    type="range"
+                    min="90"
+                    max="115"
+                    value={Math.round(styleSettings.fontScale * 100)}
+                    onChange={(e) => setStyleSettings((prev) => ({ ...prev, fontScale: Number(e.target.value) / 100 }))}
+                    className="h-1.5"
+                  />
+                </label>
               </div>
             </section>
-          ))}
 
-          <section className="rounded-2xl border border-white/10 bg-white/6 p-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-[11px] font-semibold text-white/90">前端外观</h3>
-                <p className="mt-0.5 text-[10px] text-white/45">{styleSummary}</p>
-              </div>
-              <div className={`style-preview style-preview--${styleSettings.backgroundPreset} h-8 w-16 rounded-2xl border border-white/10`} />
-            </div>
+            <section className="rounded-[var(--window-radius)] border border-white/10 bg-white/6 p-3">
+              <h3 className="mb-2 text-[11px] font-semibold text-white/90">高级原始配置</h3>
+              <textarea
+                value={extraContent}
+                onChange={(e) => setExtraContent(e.target.value)}
+                aria-label="其他原始配置"
+                title="其他原始配置"
+                placeholder="..."
+                className="min-h-24 w-full resize-y rounded-lg border border-white/10 bg-white/5 p-2 font-mono text-[10px] leading-5 text-white outline-none transition focus:border-cyan-400/50 focus:bg-white/7"
+                spellCheck={false}
+              />
+            </section>
+          </div>
+        )}
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-white/58">背景主题</span>
-                <select
-                  value={styleSettings.backgroundPreset}
-                  onChange={(e) => setStyleSettings((prev) => ({ ...prev, backgroundPreset: e.target.value as UiStyleSettings["backgroundPreset"] }))}
-                  className="rounded-xl border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50"
-                >
-                  <option value="ocean">Ocean</option>
-                  <option value="sunset">Sunset</option>
-                  <option value="forest">Forest</option>
-                  <option value="slate">Slate</option>
-                </select>
-              </label>
+        {error && <div className="absolute bottom-16 left-0 right-0 rounded-lg border border-red-500/30 bg-red-500/15 px-2 py-1 text-[10px] text-red-200">⚠️ {error}</div>}
 
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-white/58">圆角 {styleSettings.windowRadius}px</span>
-                <input
-                  type="range"
-                  min="10"
-                  max="28"
-                  value={styleSettings.windowRadius}
-                  onChange={(e) => setStyleSettings((prev) => ({ ...prev, windowRadius: Number(e.target.value) }))}
-                  className="h-1.5"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-white/58">透明度 {Math.round(styleSettings.shellOpacity * 100)}%</span>
-                <input
-                  type="range"
-                  min="55"
-                  max="95"
-                  value={Math.round(styleSettings.shellOpacity * 100)}
-                  onChange={(e) => setStyleSettings((prev) => ({ ...prev, shellOpacity: Number(e.target.value) / 100 }))}
-                  className="h-1.5"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-white/58">缩放 {styleSettings.fontScale.toFixed(2)}x</span>
-                <input
-                  type="range"
-                  min="90"
-                  max="115"
-                  value={Math.round(styleSettings.fontScale * 100)}
-                  onChange={(e) => setStyleSettings((prev) => ({ ...prev, fontScale: Number(e.target.value) / 100 }))}
-                  className="h-1.5"
-                />
-              </label>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-white/10 bg-white/6 p-3">
-            <h3 className="mb-2 text-[11px] font-semibold text-white/90">高级原始配置</h3>
-            <textarea
-              value={extraContent}
-              onChange={(e) => setExtraContent(e.target.value)}
-              aria-label="其他原始配置"
-              title="其他原始配置"
-              placeholder="..."
-              className="min-h-24 w-full resize-y rounded-xl border border-white/10 bg-white/5 p-2 font-mono text-[10px] leading-5 text-white outline-none transition focus:border-cyan-400/50 focus:bg-white/7"
-              spellCheck={false}
-            />
-          </section>
+        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-end gap-2 border-t border-white/10 bg-[#1a1c1e] py-3 mt-auto">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg bg-white/8 px-4 py-1.5 text-xs text-white/70 transition hover:bg-white/14 hover:text-white disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="rounded-lg bg-cyan-500/20 px-4 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/30 disabled:opacity-50"
+          >
+            {saving ? "保存中..." : "保存设置"}
+          </button>
         </div>
-      )}
-
-      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/15 px-2 py-1 text-[10px] text-red-200">⚠️ {error}</div>}
-
-      <div className="flex items-center justify-end gap-2 border-t border-white/10 pt-2">
-        <button
-          onClick={onClose}
-          disabled={saving}
-          className="rounded-lg bg-white/8 px-4 py-1.5 text-xs text-white/70 transition hover:bg-white/14 hover:text-white disabled:opacity-50"
-        >
-          取消
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="rounded-lg bg-cyan-500/20 px-4 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/30 disabled:opacity-50"
-        >
-          {saving ? "保存中..." : "保存设置"}
-        </button>
       </div>
     </div>
   );

@@ -34,6 +34,16 @@ export default function AlertOverlay({
 }: AlertOverlayProps) {
   const [flash, setFlash] = useState(false);
 
+  const restoreCompactSize = async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const { LogicalSize } = await import("@tauri-apps/api/dpi");
+      await getCurrentWindow().setSize(new LogicalSize(320, 80));
+    } catch (e) {
+      console.error("窗口恢复失败:", e);
+    }
+  };
+
   // 闪烁效果
   useEffect(() => {
     if (!active) return;
@@ -53,8 +63,7 @@ export default function AlertOverlay({
           const { getCurrentWindow } = await import("@tauri-apps/api/window");
           const win = getCurrentWindow();
           await win.setFocus();
-          // 调大窗口以显示警报
-          await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(560, 240));
+          await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(320, 160));
         } catch (e) {
           console.error("窗口操作失败:", e);
         }
@@ -129,7 +138,10 @@ export default function AlertOverlay({
           </button>
         )}
         <button
-          onClick={onDismiss}
+          onClick={async () => {
+            await restoreCompactSize();
+            onDismiss();
+          }}
           className="px-4 py-2 text-xs rounded-xl
                      bg-white/10 text-white/60
                      hover:bg-white/20 hover:text-white/80

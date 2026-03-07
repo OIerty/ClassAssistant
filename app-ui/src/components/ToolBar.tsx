@@ -4,7 +4,7 @@
  * 包含「上传资料」和「开始摸鱼」两个核心按钮
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 interface ToolBarProps {
   /** 是否正在监控 */
@@ -33,7 +33,6 @@ export default function ToolBar({
   isMonitoring,
   isPaused,
   isLoading,
-  courseName,
   onUpload,
   onStartMonitor,
   onStopMonitor,
@@ -44,16 +43,17 @@ export default function ToolBar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMore, setShowMore] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     (async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const { LogicalSize } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
-        const height = isMonitoring
-          ? (showMore ? 300 : 210)
-          : (showMore ? 300 : 200);
-        await win.setSize(new LogicalSize(520, height));
+
+        const width = 320;
+        const height = showMore ? 210 : 80;
+
+        await win.setSize(new LogicalSize(width, height));
       } catch {
         /* 忽略窗口操作错误 */
       }
@@ -76,7 +76,7 @@ export default function ToolBar({
   };
 
   return (
-    <div className="relative flex flex-col gap-3 px-3 pb-3">
+    <div className="relative flex flex-col gap-1 px-2 pb-2">
       {/* 隐藏的文件选择器 */}
       <input
         ref={fileInputRef}
@@ -89,11 +89,11 @@ export default function ToolBar({
 
       {!isMonitoring ? (
         <>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-5 gap-1.5 pt-0.5">
             <button
               onClick={onStartMonitor}
               disabled={isLoading}
-              className="theme-primary-button col-span-4 min-h-20 rounded-[calc(var(--window-radius)+8px)] px-5 py-4 text-xl font-semibold tracking-wide transition hover:brightness-110 disabled:opacity-50"
+              className="theme-primary-button col-span-4 flex h-8 items-center justify-center rounded-[calc(var(--window-radius)+4px)] text-[13px] font-bold tracking-wide transition hover:brightness-110 disabled:opacity-50"
               title="开始录音与监控"
             >
               🎣 开始摸鱼
@@ -101,47 +101,40 @@ export default function ToolBar({
 
             <button
               onClick={() => setShowMore((prev) => !prev)}
-              className="theme-secondary-button col-span-1 min-h-20 rounded-[calc(var(--window-radius)+4px)] px-2 py-3 text-sm font-medium transition hover:brightness-110"
+              className="theme-secondary-button col-span-1 flex h-8 items-center justify-center rounded-[calc(var(--window-radius)+2px)] text-[12px] font-medium transition hover:brightness-110"
             >
               {showMore ? "收起" : "更多"}
             </button>
           </div>
 
-          <div className="theme-muted-text text-[12px] leading-6">上传资料、设置和其他入口都收在更多功能里。</div>
+          {!showMore && <div className="theme-muted-text mt-0.5 text-center text-[10px] opacity-60">点击开始监听课堂点名与提问</div>}
         </>
       ) : (
         <>
-          <div className="theme-panel flex items-center justify-between rounded-[calc(var(--window-radius)+8px)] px-3 py-3 text-xs text-white/78">
-            <span>{courseName ? `当前课程：${courseName}` : "当前课程：未命名课程"}</span>
-            <span>{isPaused ? "已暂停" : "监控中"}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-5 gap-1.5 pt-0.5">
             <button
               onClick={onPauseResume}
               disabled={isLoading}
-              className={`rounded-[calc(var(--window-radius)+6px)] px-4 py-3 text-sm font-medium transition disabled:opacity-50 ${
-                isPaused ? "theme-primary-button hover:brightness-110" : "theme-secondary-button hover:brightness-110"
+              className={`col-span-2 flex h-7 items-center justify-center rounded-[calc(var(--window-radius)+3px)] text-[11px] font-medium transition disabled:opacity-50 ${
+                isPaused ? "theme-primary-button" : "theme-secondary-button"
               }`}
             >
-              {isPaused ? "▶ 继续监听" : "⏸ 暂停监听"}
+              {isPaused ? "▶ 继续" : "⏸ 暂停"}
             </button>
 
             <button
               onClick={onStopMonitor}
               disabled={isLoading}
-              className="rounded-[calc(var(--window-radius)+6px)] border border-red-400/25 bg-red-500/16 px-4 py-3 text-sm font-medium text-red-100 transition hover:bg-red-500/26 disabled:opacity-50"
+              className="col-span-2 flex h-7 items-center justify-center rounded-[calc(var(--window-radius)+3px)] border border-red-400/25 bg-red-500/16 text-[11px] font-medium text-red-100 transition hover:bg-red-500/26"
             >
-              ⏹ 结束摸鱼
+              ⏹ 结束
             </button>
-          </div>
 
-          <div className="flex items-center justify-end">
             <button
               onClick={() => setShowMore((prev) => !prev)}
-              className="theme-secondary-button rounded-[calc(var(--window-radius)+4px)] px-3 py-2 text-xs transition hover:brightness-110"
+              className="col-span-1 theme-secondary-button flex h-7 items-center justify-center rounded-[calc(var(--window-radius)+2px)] text-[11px] transition hover:brightness-110"
             >
-              {showMore ? "收起功能" : "更多功能"}
+              {showMore ? "收起" : "⚙️"}
             </button>
           </div>
         </>

@@ -102,6 +102,25 @@ export async function emergencyRescue(): Promise<{
   return res.json();
 }
 
+export async function emergencyRescueChat(payload: {
+  context: string;
+  question: string;
+  answer: string;
+  followup: string;
+  history: Array<{ role: string; content: string }>;
+}): Promise<{
+  status: string;
+  answer: string;
+}> {
+  const res = await fetch(`${API_BASE}/emergency_rescue_chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("救场追问失败");
+  return res.json();
+}
+
 /**
  * 生成课后总结
  */

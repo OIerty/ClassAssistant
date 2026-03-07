@@ -39,16 +39,14 @@ export default function CatchupPanel({ visible, onClose }: CatchupPanelProps) {
 
   // 面板打开时调大窗口
   useEffect(() => {
+    if (!visible) return;
+
     (async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const { LogicalSize } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
-        if (visible) {
-          await win.setSize(new LogicalSize(520, 560));
-        } else {
-          await win.setSize(new LogicalSize(560, 220));
-        }
+        await win.setSize(new LogicalSize(520, 560));
       } catch {
         /* 忽略窗口操作错误 */
       }
@@ -82,90 +80,94 @@ export default function CatchupPanel({ visible, onClose }: CatchupPanelProps) {
   };
 
   return (
-    <div className="flex h-full flex-col gap-3 p-3 animate-in fade-in duration-300">
-      {loading && (
-        <div className="flex items-center justify-center py-8 text-white/60">
-          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-          <span className="text-sm">正在分析课堂进度...</span>
-        </div>
-      )}
-
-      {error && (
-        <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 text-xs">
-          ⚠️ {error}
-        </div>
-      )}
-
-      {summary && !loading && (
-        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-sm">📍</span>
-            <span className="text-xs font-semibold text-indigo-300">老师讲到哪了</span>
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden p-3 animate-in fade-in duration-300">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-24 pr-1">
+        {loading && (
+          <div className="flex items-center justify-center py-8 text-white/60">
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+            <span className="text-sm">正在分析课堂进度...</span>
           </div>
-          <p className="text-xs text-white/85 leading-relaxed whitespace-pre-wrap">{summary}</p>
-        </div>
-      )}
+        )}
 
-      {summary && !loading && (
-        <div className="min-h-0 flex-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-white/80">继续追问 AI</span>
-            <span className="text-[11px] text-white/40">会结合当前课堂上下文回答</span>
+        {error && (
+          <div className="mb-3 p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 text-xs">
+            ⚠️ {error}
           </div>
+        )}
 
-          <div className="flex h-[250px] flex-col gap-2 overflow-y-auto pr-1">
-            {messages.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 bg-black/10 px-3 py-4 text-xs leading-6 text-white/45">
-                可以继续问术语、概念、疑难点，或者让它解释老师刚才那段内容。
+        {summary && !loading && (
+          <div className="flex flex-col gap-3">
+            <div className="shrink-0 rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-sm">📍</span>
+                <span className="text-xs font-semibold text-indigo-300">老师讲到哪了</span>
               </div>
-            ) : (
-              messages.map((message, index) => (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`rounded-2xl px-3 py-2 text-xs leading-6 ${
-                    message.role === "user"
-                      ? "self-end bg-cyan-500/16 text-cyan-50"
-                      : "self-start border border-white/10 bg-white/7 text-white/88"
-                  }`}
+              <p className="text-xs text-white/85 leading-relaxed whitespace-pre-wrap">{summary}</p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 flex flex-col">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-white/80">继续追问 AI</span>
+                <span className="text-[11px] text-white/40">会结合当前课堂上下文回答</span>
+              </div>
+
+              <div className="max-h-40 flex flex-col gap-2 overflow-y-auto pr-1">
+                {messages.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-white/10 bg-black/10 px-3 py-4 text-xs leading-6 text-white/45">
+                    可以继续问术语、概念、疑难点，或者让它解释老师刚才那段内容。
+                  </div>
+                ) : (
+                  messages.map((message, index) => (
+                    <div
+                      key={`${message.role}-${index}`}
+                      className={`rounded-2xl px-3 py-2 text-xs leading-6 ${
+                        message.role === "user"
+                          ? "self-end bg-cyan-500/16 text-cyan-50"
+                          : "self-start border border-white/10 bg-white/7 text-white/88"
+                      }`}
+                    >
+                      {message.content}
+                    </div>
+                  ))
+                )}
+                {asking && (
+                  <div className="self-start rounded-2xl border border-white/10 bg-white/7 px-3 py-2 text-xs text-white/55">
+                    正在结合当前上下文回答...
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-2 flex items-stretch gap-2">
+                <textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="比如：刚才提到的那个概念是什么意思？"
+                  className="h-12 flex-1 resize-none rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-xs text-white outline-none transition focus:border-cyan-400/50"
+                />
+                <button
+                  onClick={handleAsk}
+                  disabled={!canAsk}
+                  className="h-12 rounded-2xl border border-cyan-400/20 bg-cyan-500/16 px-4 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/24 disabled:opacity-50"
                 >
-                  {message.content}
-                </div>
-              ))
-            )}
-            {asking && (
-              <div className="self-start rounded-2xl border border-white/10 bg-white/7 px-3 py-2 text-xs text-white/55">
-                正在结合当前上下文回答...
+                  追问
+                </button>
               </div>
-            )}
+            </div>
           </div>
+        )}
+      </div>
 
-          <div className="mt-3 flex gap-2">
-            <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="比如：刚才提到的那个概念是什么意思？"
-              className="min-h-20 flex-1 resize-none rounded-2xl border border-white/10 bg-black/15 px-3 py-2 text-xs text-white outline-none transition focus:border-cyan-400/50"
-            />
-            <button
-              onClick={handleAsk}
-              disabled={!canAsk}
-              className="rounded-2xl border border-cyan-400/20 bg-cyan-500/16 px-4 py-3 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/24 disabled:opacity-50"
-            >
-              追问
-            </button>
-          </div>
-        </div>
-      )}
-
-      <button
-        onClick={onClose}
-        className="mt-1 px-4 py-1.5 text-xs rounded-lg
-                   bg-white/10 text-white/60
-                   hover:bg-white/20 hover:text-white
-                   transition-all duration-150 self-center"
-      >
-        收起面板
-      </button>
+      <div className="absolute bottom-12 left-3 right-3 flex justify-center border-t border-white/10 bg-[rgba(3,10,20,0.92)] pt-3">
+        <button
+          onClick={onClose}
+          className="px-4 py-1.5 text-xs rounded-lg
+                     bg-white/10 text-white/60
+                     hover:bg-white/20 hover:text-white
+                     transition-all duration-150"
+        >
+          收起面板
+        </button>
+      </div>
     </div>
   );
 }

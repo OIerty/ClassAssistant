@@ -45,16 +45,14 @@ export default function StartMonitorPanel({
   }, [visible, refreshToken]);
 
   useEffect(() => {
+    if (!visible) return;
+
     (async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const { LogicalSize } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
-        if (visible) {
-          await win.setSize(new LogicalSize(560, 360));
-        } else {
-          await win.setSize(new LogicalSize(560, 220));
-        }
+        await win.setSize(new LogicalSize(560, 360));
       } catch {
         /* 忽略窗口操作错误 */
       }
