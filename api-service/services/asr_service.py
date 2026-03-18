@@ -269,9 +269,26 @@ class WindowsBuiltInASR(BaseASR):
                 logger.exception("[WindowsBuiltInASR] failed to add dictation constraint")
 
             compile_result = await recognizer.compile_constraints_async()
-            compile_status = str(getattr(compile_result, "status", "unknown"))
-            if "success" not in compile_status.lower():
-                msg = f"compile constraints failed, status={compile_status}"
+            compile_status_obj = getattr(compile_result, "status", None)
+
+            compile_status_name = "unknown"
+            if compile_status_obj is not None:
+                compile_status_name = getattr(compile_status_obj, "name", None) or str(compile_status_obj)
+
+            is_compile_success = False
+            if compile_status_obj is not None:
+                try:
+                    # WinRT SpeechRecognitionResultStatus.Success 枚举值通常为 0。
+                    is_compile_success = int(compile_status_obj) == 0
+                except Exception:
+                    is_compile_success = False
+
+            if not is_compile_success:
+                status_lower = compile_status_name.lower()
+                is_compile_success = status_lower in {"success", "speechrecognitionresultstatus.success"}
+
+            if not is_compile_success:
+                msg = f"compile constraints failed, status={compile_status_name}"
                 self._start_error = msg
                 self._ready_event.set()
                 logger.error("[WindowsBuiltInASR] %s", msg)
