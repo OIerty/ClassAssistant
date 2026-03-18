@@ -19,6 +19,7 @@ timeout /t 4 >nul
 
 echo [2/2] 启动前端 Tauri 开发模式...
 cd /d %~dp0app-ui
+set TAURI_DEV_HOST=127.0.0.1
 npm run tauri dev
 
 echo.
