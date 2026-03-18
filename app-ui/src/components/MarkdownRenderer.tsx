@@ -60,7 +60,23 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
+function normalizeMathDelimiters(raw: string): string {
+  if (!raw) return "";
+
+  // 支持 LaTeX 括号分隔符。
+  let normalized = raw
+    .replace(/\\\\\[([\s\S]+?)\\\\\]/g, (_match, expr) => `$$${expr}$$`)
+    .replace(/\\\\\(([\s\S]+?)\\\\\)/g, (_match, expr) => `$${expr}$`);
+
+  // 兼容部分模型输出的 \$...\$ 写法。
+  normalized = normalized.replace(/\\\$([^\n]+?)\\\$/g, (_match, expr) => `$${expr}$`);
+
+  return normalized;
+}
+
 export default function MarkdownRenderer({ content, className = "" }: MarkdownRendererProps) {
+  const normalizedContent = normalizeMathDelimiters(content || "");
+
   return (
     <div className={`markdown-renderer text-xs leading-relaxed text-white/88 ${className}`}>
       <ReactMarkdown
@@ -92,7 +108,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
           td: (props) => <td className="border border-white/10 px-2 py-1" {...props} />,
         }}
       >
-        {content || ""}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );

@@ -29,6 +29,7 @@ const ENV_SECTIONS: Array<{ title: string; fields: EnvFieldConfig[] }> = [
         type: "select",
         options: [
           { label: "本地识别 local", value: "local" },
+          { label: "Windows 内置识别", value: "windows" },
           { label: "Mock 测试", value: "mock" },
           { label: "DashScope", value: "dashscope" },
           { label: "Seed-ASR", value: "seed-asr" },
@@ -50,6 +51,7 @@ const ENV_SECTIONS: Array<{ title: string; fields: EnvFieldConfig[] }> = [
     title: "音频与其他",
     fields: [
       { key: "DASHSCOPE_API_KEY", label: "DashScope API Key", type: "password" },
+      { key: "DASHSCOPE_ASR_MODEL", label: "DashScope ASR 模型", placeholder: "fun-asr-realtime" },
       { key: "AUDIO_SAMPLE_RATE", label: "采样率", type: "number", placeholder: "16000" },
       { key: "AUDIO_CHANNELS", label: "声道数", type: "number", placeholder: "1" },
       { key: "AUDIO_CHUNK_SIZE", label: "Chunk Size", type: "number", placeholder: "3200" },
