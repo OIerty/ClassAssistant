@@ -37,13 +37,14 @@ app.add_middleware(
 from config import DATA_DIR
 
 # ---- 注册路由 (后续步骤中实现) ----
-from routers import ppt_router, monitor_router, rescue_router, summary_router, settings_router
+from routers import ppt_router, monitor_router, rescue_router, summary_router, settings_router, prompt_router
 
 app.include_router(ppt_router.router, prefix="/api", tags=["PPT 解析"])
 app.include_router(monitor_router.router, prefix="/api", tags=["监控服务"])
 app.include_router(rescue_router.router, prefix="/api", tags=["救场功能"])
 app.include_router(summary_router.router, prefix="/api", tags=["课后总结"])
 app.include_router(settings_router.router, prefix="/api", tags=["设置"])
+app.include_router(prompt_router.router, prefix="/api", tags=["Prompt 预设"])
 
 
 @app.get("/")

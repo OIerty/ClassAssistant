@@ -4,7 +4,7 @@
  * 包含「上传资料」和「开始摸鱼」两个核心按钮
  */
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ToolBarProps {
   /** 是否正在监控 */
@@ -27,6 +27,16 @@ interface ToolBarProps {
   onCatchup: () => void;
   /** 点击设置 */
   onSettings: () => void;
+  /** 字幕是否展开 */
+  transcriptExpanded: boolean;
+  /** AI 对话是否展开 */
+  aiExpanded: boolean;
+  /** 切换字幕展开 */
+  onToggleTranscript: () => void;
+  /** 切换 AI 展开 */
+  onToggleAI: () => void;
+  /** 更多面板展开状态变化 */
+  onMoreChange: (expanded: boolean) => void;
 }
 
 export default function ToolBar({
@@ -39,26 +49,18 @@ export default function ToolBar({
   onPauseResume,
   onCatchup,
   onSettings,
+  transcriptExpanded,
+  aiExpanded,
+  onToggleTranscript,
+  onToggleAI,
+  onMoreChange,
 }: ToolBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMore, setShowMore] = useState(false);
 
-  useLayoutEffect(() => {
-    (async () => {
-      try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { LogicalSize } = await import("@tauri-apps/api/dpi");
-        const win = getCurrentWindow();
-
-        const width = 320;
-        const height = showMore ? 210 : 80;
-
-        await win.setSize(new LogicalSize(width, height));
-      } catch {
-        /* 忽略窗口操作错误 */
-      }
-    })();
-  }, [isMonitoring, showMore]);
+  useEffect(() => {
+    onMoreChange(showMore);
+  }, [showMore, onMoreChange]);
 
   /** 触发文件选择 */
   const handleUploadClick = () => {
@@ -89,7 +91,7 @@ export default function ToolBar({
 
       {!isMonitoring ? (
         <>
-          <div className="grid grid-cols-5 gap-1.5 pt-0.5">
+          <div className="grid grid-cols-7 gap-1.5 pt-0.5">
             <button
               onClick={onStartMonitor}
               disabled={isLoading}
@@ -97,6 +99,26 @@ export default function ToolBar({
               title="开始录音与监控"
             >
               🎣 开始摸鱼
+            </button>
+
+            <button
+              onClick={onToggleTranscript}
+              className={`col-span-1 flex h-8 items-center justify-center rounded-[calc(var(--window-radius)+2px)] text-[13px] transition ${
+                transcriptExpanded ? "theme-primary-button" : "theme-secondary-button"
+              }`}
+              title="向下展开字幕"
+            >
+              {transcriptExpanded ? "▾" : "▿"}
+            </button>
+
+            <button
+              onClick={onToggleAI}
+              className={`col-span-1 flex h-8 items-center justify-center rounded-[calc(var(--window-radius)+2px)] text-[13px] transition ${
+                aiExpanded ? "theme-primary-button" : "theme-secondary-button"
+              }`}
+              title="向右展开 AI 对话"
+            >
+              {aiExpanded ? "◂" : "▸"}
             </button>
 
             <button
@@ -111,7 +133,7 @@ export default function ToolBar({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-5 gap-1.5 pt-0.5">
+          <div className="grid grid-cols-7 gap-1.5 pt-0.5">
             <button
               onClick={onPauseResume}
               disabled={isLoading}
@@ -128,6 +150,26 @@ export default function ToolBar({
               className="col-span-2 flex h-7 items-center justify-center rounded-[calc(var(--window-radius)+3px)] border border-red-400/25 bg-red-500/16 text-[11px] font-medium text-red-100 transition hover:bg-red-500/26"
             >
               ⏹ 结束
+            </button>
+
+            <button
+              onClick={onToggleTranscript}
+              className={`col-span-1 flex h-7 items-center justify-center rounded-[calc(var(--window-radius)+2px)] text-[12px] transition ${
+                transcriptExpanded ? "theme-primary-button" : "theme-secondary-button"
+              }`}
+              title="展开字幕"
+            >
+              {transcriptExpanded ? "▾" : "▿"}
+            </button>
+
+            <button
+              onClick={onToggleAI}
+              className={`col-span-1 flex h-7 items-center justify-center rounded-[calc(var(--window-radius)+2px)] text-[12px] transition ${
+                aiExpanded ? "theme-primary-button" : "theme-secondary-button"
+              }`}
+              title="展开 AI 对话"
+            >
+              {aiExpanded ? "◂" : "▸"}
             </button>
 
             <button

@@ -127,14 +127,14 @@ export default function AlertOverlay({
                        active:scale-95 transition-all duration-150
                        animate-pulse"
           >
-            🆘 救场!
+            👀 查看
           </button>
         ) : (
           <button
             onClick={onCatchup}
             className="rounded-xl bg-yellow-300/90 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-yellow-200"
           >
-            📍 看看进度
+            👀 查看
           </button>
         )}
         <button

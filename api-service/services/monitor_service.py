@@ -17,7 +17,7 @@ from typing import List, Set
 from fastapi import WebSocket
 
 from config import DATA_DIR
-from services.asr_service import create_asr, BaseASR, LocalASR
+from services.asr_service import create_asr, BaseASR, LocalASR, WindowsBuiltInASR
 from services.llm_service import LLMService
 from services.transcript_service import TranscriptService
 
@@ -30,6 +30,10 @@ class MonitorService:
     SUMMARY_TRIGGER_LINES = 50
 
     def __init__(self):
+        self.enable_rolling_summary = os.getenv("TRANSCRIPT_ENABLE_ROLLING_SUMMARY", "0").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+
         # 关键词文件路径
         self.keywords_path = os.path.join(DATA_DIR, "keywords.txt")
         self.warning_keywords_path = os.path.join(DATA_DIR, "attention_keywords.txt")
@@ -53,7 +57,7 @@ class MonitorService:
 
         # 转录文件路径
         self.transcript_path = os.path.join(DATA_DIR, "class_transcript.txt")
-        self._llm_service = LLMService()
+        self._llm_service = LLMService() if self.enable_rolling_summary else None
         self._state_lock = threading.RLock()
 
         # 会话状态
@@ -61,6 +65,7 @@ class MonitorService:
         self._session_end_marker: str = ""
         self._course_name: str = ""
         self._active_material_name: str = ""
+        self._asr_model: str = ""
         self._partial_line: tuple[str, str] | None = None
         self._recent_entries: List[tuple[str, str]] = []
         self._recent_normalized_entries: List[str] = []
@@ -233,12 +238,12 @@ class MonitorService:
         }
 
     def _create_and_start_asr(self):
-        self._asr = create_asr(on_text=self._on_asr_text)
-        if isinstance(self._asr, LocalASR):
+        self._asr = create_asr(on_text=self._on_asr_text, asr_model=self._asr_model or None)
+        if isinstance(self._asr, (LocalASR, WindowsBuiltInASR)):
             self._asr.on_text = self._on_local_asr_text
         self._asr.start()
 
-    async def start(self, course_name: str = "", material_name: str = "") -> dict:
+    async def start(self, course_name: str = "", material_name: str = "", asr_model: str = "") -> dict:
         """启动监控服务"""
         if self.is_monitoring:
             return {"status": "already_running", "message": "监控服务已在运行中"}
@@ -253,6 +258,7 @@ class MonitorService:
         self._load_keywords()
         self._course_name = course_name.strip()
         self._active_material_name = material_name.strip()
+        self._asr_model = asr_model.strip()
         self._reset_session_state()
         self._flush_transcript_file()
 
@@ -406,7 +412,7 @@ class MonitorService:
         if self._course_name or self._active_material_name:
             lines.append("")
 
-        if self._rolling_summary:
+        if self.enable_rolling_summary and self._rolling_summary:
             lines.extend([
                 TranscriptService.SUMMARY_START_MARKER,
                 self._rolling_summary.strip(),
@@ -427,6 +433,8 @@ class MonitorService:
             logger.exception("写入转录文件失败")
 
     def _schedule_summary_locked(self):
+        if not self.enable_rolling_summary or not self._llm_service:
+            return
         if self._summary_task_running or not self._loop:
             return
         if len(self._summary_source_entries) < self.SUMMARY_TRIGGER_LINES:
@@ -445,6 +453,11 @@ class MonitorService:
         previous_summary: str,
         chunk: List[tuple[str, str]],
     ):
+        if not self._llm_service:
+            with self._state_lock:
+                self._summary_task_running = False
+            return
+
         chunk_lines = [f"[{timestamp}] {text}" for timestamp, text in chunk]
         try:
             new_summary = await self._llm_service.compress_monitoring_progress(

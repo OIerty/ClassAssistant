@@ -34,6 +34,7 @@ export async function uploadPPT(file: File): Promise<{
 export interface StartMonitorPayload {
   course_name: string;
   cite_filename?: string | null;
+  asr_model?: string | null;
 }
 
 export interface StopMonitorResponse {
@@ -102,12 +103,32 @@ export async function emergencyRescue(): Promise<{
   return res.json();
 }
 
+export async function emergencyRescueWithPrompt(payload: {
+  preset_id?: string;
+  prompt_override?: string;
+}): Promise<{
+  status: string;
+  context: string;
+  question: string;
+  answer: string;
+}> {
+  const res = await fetch(`${API_BASE}/emergency_rescue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("救场请求失败");
+  return res.json();
+}
+
 export async function emergencyRescueChat(payload: {
   context: string;
   question: string;
   answer: string;
   followup: string;
   history: Array<{ role: string; content: string }>;
+  preset_id?: string;
+  prompt_override?: string;
 }): Promise<{
   status: string;
   answer: string;
@@ -146,10 +167,28 @@ export async function catchup(): Promise<{
   return res.json();
 }
 
+export async function catchupWithPrompt(payload: {
+  preset_id?: string;
+  prompt_override?: string;
+}): Promise<{
+  status: string;
+  summary: string;
+}> {
+  const res = await fetch(`${API_BASE}/catchup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("获取进度失败");
+  return res.json();
+}
+
 export async function catchupChat(payload: {
   summary: string;
   question: string;
   history: Array<{ role: string; content: string }>;
+  preset_id?: string;
+  prompt_override?: string;
 }): Promise<{
   status: string;
   answer: string;
@@ -224,5 +263,76 @@ export async function saveSettings(content: string): Promise<{
     const err = await res.json();
     throw new Error(err.detail || "保存设置失败");
   }
+  return res.json();
+}
+
+export interface PromptPresetItem {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+}
+
+export interface PromptSnapshotResponse {
+  status: string;
+  data: {
+    presets: Record<string, PromptPresetItem[]>;
+    selected: Record<string, string>;
+    custom_drafts: Record<string, string>;
+  };
+}
+
+export async function getPrompts(category?: string): Promise<PromptSnapshotResponse> {
+  const url = category
+    ? `${API_BASE}/prompts?category=${encodeURIComponent(category)}`
+    : `${API_BASE}/prompts`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("获取提示词预设失败");
+  return res.json();
+}
+
+export async function selectPromptPreset(payload: {
+  category: string;
+  preset_id: string;
+}): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/prompts/select`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("切换提示词预设失败");
+  return res.json();
+}
+
+export async function savePromptDraft(payload: {
+  category: string;
+  content: string;
+}): Promise<{
+  status: string;
+  data: { category: string; content: string };
+}> {
+  const res = await fetch(`${API_BASE}/prompts/draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("保存提示词草稿失败");
+  return res.json();
+}
+
+export async function getTranscriptSnapshot(sinceMtime?: number): Promise<{
+  status: string;
+  exists: boolean;
+  changed: boolean;
+  mtime: number | null;
+  line_count: number;
+  sha1: string;
+  content: string;
+}> {
+  const url = sinceMtime
+    ? `${API_BASE}/transcript_snapshot?since_mtime=${encodeURIComponent(String(sinceMtime))}`
+    : `${API_BASE}/transcript_snapshot`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("获取转录快照失败");
   return res.json();
 }
