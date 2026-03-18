@@ -194,6 +194,46 @@ class WindowsBuiltInASR(BaseASR):
 
         return f"WindowsBuiltInASR recognition failed: {raw}. {'；'.join(hints)}"
 
+    @staticmethod
+    def _bind_session_event(session, event_name: str, handler):
+        """兼容不同 winsdk 投影的事件绑定方式。"""
+        candidate_names = [
+            event_name,
+            event_name.replace("_", ""),
+            "".join(part.capitalize() if idx else part for idx, part in enumerate(event_name.split("_"))),
+        ]
+
+        for name in candidate_names:
+            if hasattr(session, name):
+                event_obj = getattr(session, name)
+                event_obj += handler
+                return ("attr", name, handler)
+
+            add_name = f"add_{name}"
+            if hasattr(session, add_name):
+                token = getattr(session, add_name)(handler)
+                return ("add", name, token)
+
+        raise AttributeError(
+            f"'{type(session).__name__}' has no compatible event for '{event_name}'"
+        )
+
+    @staticmethod
+    def _unbind_session_event(session, binding):
+        if not binding:
+            return
+
+        bind_type, event_name, token_or_handler = binding
+        if bind_type == "attr" and hasattr(session, event_name):
+            event_obj = getattr(session, event_name)
+            event_obj -= token_or_handler
+            return
+
+        if bind_type == "add":
+            remove_name = f"remove_{event_name}"
+            if hasattr(session, remove_name):
+                getattr(session, remove_name)(token_or_handler)
+
     def start(self):
         if os.name != "nt":
             raise RuntimeError("WindowsBuiltInASR only available on Windows")
@@ -254,6 +294,7 @@ class WindowsBuiltInASR(BaseASR):
             return
 
         recognizer = None
+        result_binding = None
         try:
             recognizer = SpeechRecognizer()
 
@@ -308,7 +349,7 @@ class WindowsBuiltInASR(BaseASR):
                 except Exception:
                     logger.exception("[WindowsBuiltInASR] result callback failed")
 
-            session.result_generated += _on_result_generated
+            result_binding = self._bind_session_event(session, "result_generated", _on_result_generated)
             logger.info("[WindowsBuiltInASR] starting continuous recognition session...")
             await session.start_async()
             logger.info("[WindowsBuiltInASR] continuous recognition running")
@@ -327,6 +368,12 @@ class WindowsBuiltInASR(BaseASR):
                 self._ready_event.set()
             logger.exception("[WindowsBuiltInASR] recognition failed")
         finally:
+            try:
+                if recognizer is not None:
+                    session = recognizer.continuous_recognition_session
+                    self._unbind_session_event(session, result_binding)
+            except Exception:
+                logger.exception("[WindowsBuiltInASR] failed to unbind result callback")
             recognizer = None
 
     def stop(self):
