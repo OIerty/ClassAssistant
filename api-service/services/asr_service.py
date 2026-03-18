@@ -3,6 +3,7 @@ ASR 语音识别服务
 ================
 支持四种模式：
   - local:     免费语音识别（Google Speech API，无需密钥，需联网）
+    - windows:   Windows 内置语音识别（WinRT SpeechRecognizer，本地离线/系统能力）
   - mock:      空实现，用于开发测试
   - dashscope: 阿里云百炼 Fun-ASR 实时语音识别
   - seed-asr:  字节跳动 Seed-ASR 大模型语音识别
@@ -154,6 +155,116 @@ class LocalASR(BaseASR):
 
 
 # =====================================================================
+# Windows 内置 ASR 实现（WinRT）
+# =====================================================================
+
+class WindowsBuiltInASR(BaseASR):
+    """
+    Windows 内置语音识别（WinRT SpeechRecognizer）。
+
+    说明：
+    - 仅 Windows 可用；非 Windows 环境会自动降级为不可用日志。
+    - 依赖 pip 包 winsdk（Windows Runtime for Python）。
+    """
+
+    def __init__(self, on_text: Callable[[str, bool], None]):
+        super().__init__(on_text)
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+    def start(self):
+        self._running = True
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        logger.info("[WindowsBuiltInASR] started")
+
+    def _run(self):
+        if os.name != "nt":
+            logger.error("[WindowsBuiltInASR] only available on Windows")
+            return
+
+        try:
+            import asyncio
+            asyncio.run(self._run_async())
+        except Exception:
+            logger.exception("[WindowsBuiltInASR] run loop failed")
+
+    async def _run_async(self):
+        try:
+            from winsdk.windows.media.speechrecognition import (
+                SpeechRecognizer,
+                SpeechRecognitionScenario,
+                SpeechRecognitionTopicConstraint,
+            )
+        except Exception:
+            logger.exception(
+                "[WindowsBuiltInASR] failed to import winsdk. Please install dependency: winsdk"
+            )
+            return
+
+        recognizer = None
+        try:
+            recognizer = SpeechRecognizer()
+
+            # 使用听写约束，提升课堂口语场景识别效果
+            try:
+                recognizer.constraints.append(
+                    SpeechRecognitionTopicConstraint(
+                        SpeechRecognitionScenario.dictation,
+                        "dictation",
+                    )
+                )
+            except Exception:
+                logger.exception("[WindowsBuiltInASR] failed to add dictation constraint")
+
+            compile_result = await recognizer.compile_constraints_async()
+            compile_status = str(getattr(compile_result, "status", "unknown"))
+            if "success" not in compile_status.lower():
+                logger.warning(
+                    "[WindowsBuiltInASR] compile constraints status: %s",
+                    compile_status,
+                )
+
+            session = recognizer.continuous_recognition_session
+
+            def _on_result_generated(_sender, args):
+                if not self._running:
+                    return
+                try:
+                    result = getattr(args, "result", None)
+                    text = (getattr(result, "text", "") or "").strip()
+                    if text:
+                        # 连续识别回调按整句回调，视作 final
+                        self.on_text(text, True)
+                except Exception:
+                    logger.exception("[WindowsBuiltInASR] result callback failed")
+
+            session.result_generated += _on_result_generated
+            await session.start_async()
+            logger.info("[WindowsBuiltInASR] continuous recognition running")
+
+            while not self._stop_event.is_set():
+                await asyncio.sleep(0.2)
+
+            try:
+                await session.stop_async()
+            except Exception:
+                logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
+        except Exception:
+            logger.exception("[WindowsBuiltInASR] recognition failed")
+        finally:
+            recognizer = None
+
+    def stop(self):
+        self._running = False
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
+        logger.info("[WindowsBuiltInASR] stopped")
+
+
+# =====================================================================
 # DashScope Fun-ASR 实现
 # =====================================================================
 
@@ -163,8 +274,9 @@ class DashScopeASR(BaseASR):
     使用 dashscope SDK 的 Recognition + RecognitionCallback
     """
 
-    def __init__(self, on_text: Callable[[str, bool], None]):
+    def __init__(self, on_text: Callable[[str, bool], None], model_name: str | None = None):
         super().__init__(on_text)
+        self.model_name = (model_name or os.getenv("DASHSCOPE_ASR_MODEL", "fun-asr-realtime")).strip() or "fun-asr-realtime"
         self._recognition = None
         self._mic: Optional[pyaudio.PyAudio] = None
         self._stream = None
@@ -211,7 +323,7 @@ class DashScopeASR(BaseASR):
 
         callback = _Callback()
         self._recognition = Recognition(
-            model="fun-asr-realtime",
+            model=self.model_name,
             format="pcm",
             sample_rate=SAMPLE_RATE,
             semantic_punctuation_enabled=False,
@@ -224,7 +336,7 @@ class DashScopeASR(BaseASR):
         # 在单独线程中开启麦克风录音并推流
         self._send_thread = threading.Thread(target=self._audio_loop, daemon=True)
         self._send_thread.start()
-        logger.info("[DashScopeASR] started")
+        logger.info("[DashScopeASR] started (model=%s)", self.model_name)
 
     def _audio_loop(self):
         """持续从麦克风读取音频并发送到 ASR"""
@@ -575,12 +687,13 @@ class SeedASR(BaseASR):
 # 工厂函数
 # =====================================================================
 
-def create_asr(on_text: Callable[[str, bool], None]) -> BaseASR:
+def create_asr(on_text: Callable[[str, bool], None], asr_model: str | None = None) -> BaseASR:
     """
     根据 ASR_MODE 环境变量创建对应的 ASR 实例
 
     Args:
         on_text: 文本回调 (text, is_final)
+        asr_model: 可选 ASR 模型名（当前对 DashScope 生效）
 
     Returns:
         BaseASR 子类实例
@@ -588,8 +701,10 @@ def create_asr(on_text: Callable[[str, bool], None]) -> BaseASR:
     mode = os.getenv("ASR_MODE", "local").lower()
     if mode == "local":
         return LocalASR(on_text)
+    elif mode == "windows":
+        return WindowsBuiltInASR(on_text)
     elif mode == "dashscope":
-        return DashScopeASR(on_text)
+        return DashScopeASR(on_text, model_name=asr_model)
     elif mode == "seed-asr":
         return SeedASR(on_text)
     else:

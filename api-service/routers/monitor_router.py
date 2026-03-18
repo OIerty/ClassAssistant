@@ -27,6 +27,7 @@ class KeywordUpdateRequest(BaseModel):
 class StartMonitorRequest(BaseModel):
     course_name: str = ""
     cite_filename: Optional[str] = None
+    asr_model: Optional[str] = None
 
 
 @router.post("/start_monitor")
@@ -42,8 +43,18 @@ async def start_monitor(request: StartMonitorRequest):
     result = await monitor_service.start(
         course_name=request.course_name,
         material_name=material_name,
+        asr_model=request.asr_model or "",
     )
     return result
+
+
+@router.get("/transcript_snapshot")
+async def get_transcript_snapshot(since_mtime: Optional[float] = None):
+    snapshot = transcript_service.get_transcript_snapshot(since_mtime=since_mtime)
+    return {
+        "status": "success",
+        **snapshot,
+    }
 
 
 @router.get("/cite_files")

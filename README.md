@@ -50,9 +50,9 @@
 
 | 功能 | 说明 |
 | ------ | ------ |
-| 🎙️ 实时语音监控 | Local ASR / Seed-ASR / DashScope / Mock 多模式切换 |
+| 🎙️ 实时语音监控 | Local ASR / Windows Built-in ASR / Seed-ASR / DashScope / Mock 多模式切换 |
 | 🧹 去重转录 | 流式识别结果按句落盘，过滤重复、碎片标点和相近修正文 |
-| 🧠 滚动课堂摘要 | 每累计 50 条课堂记录，自动压缩为一段历史摘要，减小上下文体积 |
+| 🧠 转录保留策略 | 默认完整保留课堂转录，支持按开关启用滚动摘要压缩 |
 | 🚨 点名预警 | 命中关键词后通过 WebSocket 推送红色警报弹层 |
 | 🆘 一键救场 | 结合最近转录和课程资料，生成应答思路与参考答案 |
 | 📍 老师讲到哪了 | 对最近课堂内容做即时进度总结 |
@@ -79,7 +79,7 @@ Tauri + React UI
                       data/cite/*.txt
 ```
 
-后端负责录音、ASR、关键词检测、滚动摘要和 LLM 调用；前端负责悬浮窗 UI、警报展示、资料上传、监控启动参数选择和设置编辑。
+后端负责录音、ASR、关键词检测、转录落盘和 LLM 调用；前端负责悬浮窗 UI、警报展示、资料上传、监控启动参数选择和设置编辑。
 
 ## 🚀 快速开始
 
@@ -111,8 +111,11 @@ npm install
 在 api-service 下创建 .env，可参考 .env.example：
 
 ```env
-# ASR 模式: local | mock | dashscope | seed-asr
+# ASR 模式: local | windows | mock | dashscope | seed-asr
 ASR_MODE=local
+
+# 转录策略: 0=完整保留, 1=滚动压缩
+TRANSCRIPT_ENABLE_ROLLING_SUMMARY=0
 
 # Seed-ASR
 SEED_ASR_APP_KEY=your_app_key
@@ -169,6 +172,7 @@ npm run tauri dev
 | 模式 | 说明 |
 | ------ | ------ |
 | local | 基于 SpeechRecognition + Google Speech API，按句回调，适合直接体验 |
+| windows | Windows 内置语音识别（WinRT SpeechRecognizer），优先使用本机能力 |
 | mock | 不录音、不识别，适合纯 UI 联调 |
 | dashscope | 阿里云百炼 Fun-ASR |
 | seed-asr | 字节 Seed-ASR，使用 utterances + definite 分句，避免流式累积文本反复写盘 |
@@ -178,13 +182,14 @@ npm run tauri dev
 - Local ASR 继续保持“识别完一句追加一行”的本地模式。
 - Seed-ASR 只把 definite 的稳定句子落盘，partial 文本只保存在内存中。
 - 会过滤孤立标点、极短碎片和与近期内容高度相似的重复句。
-- 每 50 条记录会触发一次 LLM 压缩，把旧内容折叠进“历史摘要”块。
+- 默认完整保留课堂转录，不做滚动压缩，便于回看和阅读。
+- 如需减少上下文体积，可将 TRANSCRIPT_ENABLE_ROLLING_SUMMARY 设为 1，按 50 条触发一次滚动摘要。
 
 ## 📁 运行时数据
 
 | 路径 | 用途 |
 | ------ | ------ |
-| data/class_transcript.txt | 当前课堂完整记录，含滚动历史摘要块 |
+| data/class_transcript.txt | 当前课堂完整记录（默认不压缩；开启开关后含历史摘要块） |
 | data/current_class_material.txt | 当前选中的参考资料文本 |
 | data/cite/ | 上传资料解析后的候选引用文本 |
 | data/keywords.txt | 用户自定义关键词 |

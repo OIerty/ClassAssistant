@@ -7,6 +7,7 @@
 import os
 import re
 import shutil
+import hashlib
 from datetime import datetime, timedelta
 
 from config import DATA_DIR, CITE_DIR
@@ -151,3 +152,38 @@ class TranscriptService:
 
         shutil.copyfile(source_path, self.material_path)
         return source_path
+
+    def get_transcript_snapshot(self, since_mtime: float | None = None) -> dict:
+        """返回 transcript 快照，供前端轮询时快速判断是否变化。"""
+        if not os.path.exists(self.transcript_path):
+            return {
+                "exists": False,
+                "changed": False,
+                "mtime": None,
+                "line_count": 0,
+                "sha1": "",
+                "content": "",
+            }
+
+        stat = os.stat(self.transcript_path)
+        mtime = stat.st_mtime
+        if since_mtime is not None and mtime <= since_mtime:
+            return {
+                "exists": True,
+                "changed": False,
+                "mtime": mtime,
+                "line_count": 0,
+                "sha1": "",
+                "content": "",
+            }
+
+        content = self.get_full_transcript()
+        sha1 = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
+        return {
+            "exists": True,
+            "changed": True,
+            "mtime": mtime,
+            "line_count": len(content.splitlines()),
+            "sha1": sha1,
+            "content": content,
+        }

@@ -3,11 +3,12 @@ import { getCiteFiles } from "../services/api";
 
 const LAST_COURSE_NAME_KEY = "class-assistant-last-course-name";
 const LAST_CITE_FILENAME_KEY = "class-assistant-last-cite-filename";
+const LAST_ASR_MODEL_KEY = "class-assistant-last-asr-model";
 
 interface StartMonitorPanelProps {
   visible: boolean;
   onClose: () => void;
-  onConfirm: (payload: { courseName: string; citeFilename: string | null }) => Promise<void>;
+  onConfirm: (payload: { courseName: string; citeFilename: string | null; asrModel: string }) => Promise<void>;
   refreshToken: number;
 }
 
@@ -19,6 +20,7 @@ export default function StartMonitorPanel({
 }: StartMonitorPanelProps) {
   const [courseName, setCourseName] = useState("");
   const [citeFilename, setCiteFilename] = useState("");
+  const [asrModel, setAsrModel] = useState("fun-asr-realtime");
   const [items, setItems] = useState<Array<{ filename: string; updated_at: string; size: number }>>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -31,8 +33,10 @@ export default function StartMonitorPanel({
     setError(null);
     const rememberedCourseName = window.localStorage.getItem(LAST_COURSE_NAME_KEY) || "";
     const rememberedCiteFilename = window.localStorage.getItem(LAST_CITE_FILENAME_KEY) || "";
+    const rememberedAsrModel = window.localStorage.getItem(LAST_ASR_MODEL_KEY) || "fun-asr-realtime";
     setCourseName(rememberedCourseName);
     setCiteFilename(rememberedCiteFilename);
+    setAsrModel(rememberedAsrModel);
     getCiteFiles()
       .then((res) => {
         setItems(res.items);
@@ -52,7 +56,7 @@ export default function StartMonitorPanel({
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const { LogicalSize } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
-        await win.setSize(new LogicalSize(560, 360));
+        await win.setSize(new LogicalSize(620, 420));
       } catch {
         /* 忽略窗口操作错误 */
       }
@@ -67,9 +71,11 @@ export default function StartMonitorPanel({
     try {
       window.localStorage.setItem(LAST_COURSE_NAME_KEY, courseName.trim());
       window.localStorage.setItem(LAST_CITE_FILENAME_KEY, citeFilename || "");
+      window.localStorage.setItem(LAST_ASR_MODEL_KEY, asrModel.trim() || "fun-asr-realtime");
       await onConfirm({
         courseName: courseName.trim(),
         citeFilename: citeFilename || null,
+        asrModel: asrModel.trim() || "fun-asr-realtime",
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "启动失败");
@@ -110,6 +116,21 @@ export default function StartMonitorPanel({
             </option>
           ))}
         </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-white/65">DashScope ASR 模型（可自填）</span>
+        <input
+          list="asr-model-suggestions"
+          value={asrModel}
+          onChange={(e) => setAsrModel(e.target.value)}
+          placeholder="fun-asr-realtime"
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-400/50 focus:bg-white/8"
+        />
+        <datalist id="asr-model-suggestions">
+          <option value="fun-asr-realtime" />
+          <option value="paraformer-realtime-v2" />
+        </datalist>
       </label>
 
       <div className="min-h-5 text-xs text-white/45">

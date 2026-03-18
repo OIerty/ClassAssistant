@@ -9,6 +9,7 @@ import logging
 import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+from services.prompt_service import PromptService
 
 load_dotenv()
 
@@ -29,8 +30,15 @@ class LLMService:
             base_url=self.base_url,
             api_key=self.api_key,
         )
+        self.prompt_service = PromptService()
 
-    async def analyze_rescue(self, transcript: str, material: str) -> dict:
+    async def analyze_rescue(
+        self,
+        transcript: str,
+        material: str,
+        preset_id: str | None = None,
+        prompt_override: str | None = None,
+    ) -> dict:
         """
         紧急救场分析
         - 根据课堂转录和课程资料，提取老师的问题并生成答案
@@ -43,7 +51,7 @@ class LLMService:
             包含 context, question, answer 的字典
         """
         # 组装 Prompt
-        system_prompt = """你是一个大学课堂助手。你的任务是根据课堂录音转录和课程资料，快速分析以下内容：
+        fallback_system_prompt = """你是一个大学课堂助手。你的任务是根据课堂录音转录和课程资料，快速分析以下内容：
 1. 目前课堂正在讲的内容概要（简短）
 2. 老师刚才提出的问题是什么（精确提取）
 3. 该问题的建议答案（结合课程资料给出准确、简洁的回答）
@@ -54,6 +62,12 @@ class LLMService:
     "question": "老师提出的问题",
     "answer": "建议答案"
 }"""
+        system_prompt = self.prompt_service.get_prompt(
+            category="rescue",
+            fallback_prompt=fallback_system_prompt,
+            preset_id=preset_id,
+            prompt_override=prompt_override,
+        )
 
         user_prompt = f"""【课堂录音转录（最近2分钟）】
 {transcript}
@@ -100,7 +114,13 @@ class LLMService:
                 "answer": "请检查 API 配置是否正确"
             }
 
-    async def analyze_catchup(self, transcript: str, material: str) -> dict:
+    async def analyze_catchup(
+        self,
+        transcript: str,
+        material: str,
+        preset_id: str | None = None,
+        prompt_override: str | None = None,
+    ) -> dict:
         """
         课堂进度摘要 - 告知用户老师讲到哪了、有什么重要信息
 
@@ -111,13 +131,19 @@ class LLMService:
         Returns:
             包含 summary 的字典
         """
-        system_prompt = """你是一个大学课堂助手。学生正在上课但没有认真听，现在想知道老师讲到哪了。
+        fallback_system_prompt = """你是一个大学课堂助手。学生正在上课但没有认真听，现在想知道老师讲到哪了。
 请根据课堂录音转录和课程资料，简洁地总结：
 1. 老师目前讲到了什么内容
 2. 有没有重要的知识点、考试重点或需要注意的事项
 3. 如果有布置作业或提到截止日期，也请标出
 
 请用简洁易读的中文回复，不要太长，控制在200字以内。"""
+        system_prompt = self.prompt_service.get_prompt(
+            category="catchup",
+            fallback_prompt=fallback_system_prompt,
+            preset_id=preset_id,
+            prompt_override=prompt_override,
+        )
 
         user_prompt = f"""【课堂录音转录】
 {transcript}
@@ -149,6 +175,8 @@ class LLMService:
         material: str,
         question: str,
         history: list[dict] | None = None,
+        preset_id: str | None = None,
+        prompt_override: str | None = None,
     ) -> dict:
         """围绕当前课堂进度继续追问。"""
         safe_history = history or []
@@ -158,13 +186,19 @@ class LLMService:
             if item.get('content')
         ) or "暂无历史追问"
 
-        system_prompt = """你是一个课堂随堂答疑助手。你需要基于当前课堂进度摘要、最近课堂转录、课程资料以及已有追问历史，回答学生的后续问题。
+        fallback_system_prompt = """你是一个课堂随堂答疑助手。你需要基于当前课堂进度摘要、最近课堂转录、课程资料以及已有追问历史，回答学生的后续问题。
 
 要求：
 1. 优先依据给定上下文回答，不要编造课堂里没提过的结论。
 2. 回答要直接、清楚，适合学生边上课边看。
 3. 如果问题是解释术语、公式或概念，可以补充必要背景，但不要长篇展开。
 4. 如果上下文不足，要明确说明“当前课堂上下文不足”，再给出谨慎推断。"""
+        system_prompt = self.prompt_service.get_prompt(
+            category="catchup_chat",
+            fallback_prompt=fallback_system_prompt,
+            preset_id=preset_id,
+            prompt_override=prompt_override,
+        )
 
         user_prompt = f"""【当前课堂进度摘要】
 {summary}
@@ -207,6 +241,8 @@ class LLMService:
         material: str,
         followup: str,
         history: list[dict] | None = None,
+        preset_id: str | None = None,
+        prompt_override: str | None = None,
     ) -> dict:
         """围绕救场结果继续追问。"""
         safe_history = history or []
@@ -216,13 +252,19 @@ class LLMService:
             if item.get('content')
         ) or "暂无历史追问"
 
-        system_prompt = """你是一个课堂救场辅助助手。你需要基于当前课堂上下文、识别到的老师问题、已有建议答案、最近课堂转录、课程资料以及追问历史，继续回答学生的后续问题。
+        fallback_system_prompt = """你是一个课堂救场辅助助手。你需要基于当前课堂上下文、识别到的老师问题、已有建议答案、最近课堂转录、课程资料以及追问历史，继续回答学生的后续问题。
 
 要求：
 1. 优先依据当前课堂上下文和已给出的救场答案作答，不要无依据扩展。
 2. 回答要适合学生临场查看，简洁直接。
 3. 如果上下文不足，要明确指出“当前课堂上下文不足”，再给出谨慎推断。
 4. 如果学生是在追问如何表达，可以给出更口语化、更短的回答版本。"""
+        system_prompt = self.prompt_service.get_prompt(
+            category="rescue_chat",
+            fallback_prompt=fallback_system_prompt,
+            preset_id=preset_id,
+            prompt_override=prompt_override,
+        )
 
         user_prompt = f"""【课堂上下文】
 {context}

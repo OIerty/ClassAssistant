@@ -25,6 +25,8 @@ class CatchupChatRequest(BaseModel):
     summary: str
     question: str
     history: list[CatchupHistoryItem] = []
+    preset_id: str = ""
+    prompt_override: str = ""
 
 
 class RescueChatRequest(BaseModel):
@@ -33,10 +35,22 @@ class RescueChatRequest(BaseModel):
     answer: str
     followup: str
     history: list[CatchupHistoryItem] = []
+    preset_id: str = ""
+    prompt_override: str = ""
+
+
+class CatchupRequest(BaseModel):
+    preset_id: str = ""
+    prompt_override: str = ""
+
+
+class RescueRequest(BaseModel):
+    preset_id: str = ""
+    prompt_override: str = ""
 
 
 @router.post("/emergency_rescue")
-async def emergency_rescue():
+async def emergency_rescue(request: RescueRequest | None = None):
     """
     紧急救场接口
     - 读取最近 2 分钟的课堂转录文本
@@ -61,7 +75,9 @@ async def emergency_rescue():
         # 调用 LLM 分析
         result = await llm_service.analyze_rescue(
             transcript=recent_transcript,
-            material=class_material
+            material=class_material,
+            preset_id=(request.preset_id if request else "") or None,
+            prompt_override=(request.prompt_override if request else "") or None,
         )
 
         return {
@@ -74,7 +90,7 @@ async def emergency_rescue():
 
 
 @router.post("/catchup")
-async def catchup():
+async def catchup(request: CatchupRequest | None = None):
     """
     老师讲到哪了 - 获取当前课堂进度摘要
     - 读取到目前为止的全部转录文本
@@ -93,7 +109,9 @@ async def catchup():
 
         result = await llm_service.analyze_catchup(
             transcript=recent_transcript,
-            material=class_material
+            material=class_material,
+            preset_id=(request.preset_id if request else "") or None,
+            prompt_override=(request.prompt_override if request else "") or None,
         )
 
         return {
@@ -117,6 +135,8 @@ async def catchup_chat(request: CatchupChatRequest):
             material=class_material,
             question=request.question,
             history=[item.model_dump() for item in request.history],
+            preset_id=request.preset_id or None,
+            prompt_override=request.prompt_override or None,
         )
         return {
             "status": "success",
@@ -140,6 +160,8 @@ async def emergency_rescue_chat(request: RescueChatRequest):
             material=class_material,
             followup=request.followup,
             history=[item.model_dump() for item in request.history],
+            preset_id=request.preset_id or None,
+            prompt_override=request.prompt_override or None,
         )
         return {
             "status": "success",

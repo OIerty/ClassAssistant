@@ -42,5 +42,8 @@ python-dotenv==1.0.1
 # ASR - 本地免费语音识别 (Google 免费 API，无需密钥)
 SpeechRecognition>=3.10.0
 
+# ASR - Windows 内置语音识别 (WinRT)
+winsdk>=1.0.0b10
+
 # 异步文件操作
 aiofiles==24.1.0

@@ -8,10 +8,10 @@ import { useCallback, useEffect, useState } from "react";
 import TitleBar from "./components/TitleBar";
 import ToolBar from "./components/ToolBar";
 import AlertOverlay from "./components/AlertOverlay";
-import RescuePanel from "./components/RescuePanel";
-import CatchupPanel from "./components/CatchupPanel";
 import StartMonitorPanel from "./components/StartMonitorPanel";
 import SettingsPanel from "./components/SettingsPanel";
+import TranscriptViewer from "./components/TranscriptViewer";
+import InlineAIChat from "./components/InlineAIChat";
 import ToastContainer, { type ToastMessage } from "./components/Toast";
 import { useWebSocket } from "./hooks/useWebSocket";
 import classFoxIcon from "../src-tauri/icons/icon.png";
@@ -46,10 +46,12 @@ function MainApp() {
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showRescuePanel, setShowRescuePanel] = useState(false);
-  const [showCatchupPanel, setShowCatchupPanel] = useState(false);
   const [showStartMonitorPanel, setShowStartMonitorPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [toolbarMoreExpanded, setToolbarMoreExpanded] = useState(false);
+  const [transcriptExpanded, setTranscriptExpanded] = useState(false);
+  const [aiExpanded, setAiExpanded] = useState(false);
+  const [aiMode, setAiMode] = useState<"catchup" | "rescue">("catchup");
   const [citeRefreshToken, setCiteRefreshToken] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activeCourseName, setActiveCourseName] = useState("");
@@ -61,6 +63,36 @@ function MainApp() {
   useEffect(() => {
     applyUiStyleSettings(readUiStyleSettings());
   }, []);
+
+  useEffect(() => {
+    if (showStartMonitorPanel || showSettingsPanel) return;
+
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const { LogicalSize } = await import("@tauri-apps/api/dpi");
+        const win = getCurrentWindow();
+
+        let width = 320;
+        let height = toolbarMoreExpanded ? 210 : 80;
+
+        if (transcriptExpanded) {
+          height = Math.max(height, 430);
+        }
+        if (aiExpanded) {
+          width = 900;
+          height = Math.max(height, 520);
+        }
+        if (transcriptExpanded && aiExpanded) {
+          height = Math.max(height, 580);
+        }
+
+        await win.setSize(new LogicalSize(width, height));
+      } catch {
+        /* 忽略窗口操作错误 */
+      }
+    })();
+  }, [toolbarMoreExpanded, transcriptExpanded, aiExpanded, showStartMonitorPanel, showSettingsPanel]);
 
   // ---- Toast 管理 ----
   const addToast = useCallback(
@@ -104,6 +136,8 @@ function MainApp() {
       setIsMonitoring(false);
       setIsPaused(false);
       setActiveCourseName("");
+      setTranscriptExpanded(false);
+      setAiExpanded(false);
       addToast(res.message, "info");
       if (res.summary?.filename) {
         addToast(`已自动生成总结: ${res.summary.filename}`, "success");
@@ -156,10 +190,19 @@ function MainApp() {
   }, [isPaused, connect, disconnect, addToast]);
 
   const handleStartMonitorConfirm = useCallback(
-    async ({ courseName, citeFilename }: { courseName: string; citeFilename: string | null }) => {
+    async ({
+      courseName,
+      citeFilename,
+      asrModel,
+    }: {
+      courseName: string;
+      citeFilename: string | null;
+      asrModel: string;
+    }) => {
       await startMonitor({
         course_name: courseName,
         cite_filename: citeFilename,
+        asr_model: asrModel,
       });
       connect();
       setIsMonitoring(true);
@@ -174,24 +217,18 @@ function MainApp() {
   // ---- 救场 ----
   const handleRescue = useCallback(() => {
     dismissAlert();
-    setShowRescuePanel(true);
+    setAiMode("rescue");
+    setTranscriptExpanded(true);
+    setAiExpanded(true);
   }, [dismissAlert]);
-
-  // ---- 关闭救场面板 ----
-  const handleCloseRescue = useCallback(() => {
-    setShowRescuePanel(false);
-  }, []);
 
   // ---- 老师讲到哪了 ----
   const handleCatchup = useCallback(() => {
     dismissAlert();
-    setShowCatchupPanel(true);
+    setAiMode("catchup");
+    setTranscriptExpanded(true);
+    setAiExpanded(true);
   }, [dismissAlert]);
-
-  // ---- 关闭进度面板 ----
-  const handleCloseCatchup = useCallback(() => {
-    setShowCatchupPanel(false);
-  }, []);
 
   const handleOpenSettings = useCallback(() => {
     setShowSettingsPanel(true);
@@ -202,25 +239,53 @@ function MainApp() {
   }, []);
 
   return (
-    <div className="app-shell relative h-full w-full overflow-hidden rounded-[var(--window-radius)] border border-[var(--theme-shell-border)] shadow-2xl backdrop-blur-xl">
+    <div className="app-shell relative flex h-full w-full flex-col overflow-hidden rounded-[var(--window-radius)] border border-[var(--theme-shell-border)] shadow-2xl backdrop-blur-xl">
       {/* 标题栏 */}
       <TitleBar isMonitoring={isMonitoring} isPaused={isPaused} courseName={activeCourseName} />
 
-      {/* 工具栏（非救场/进度模式时显示） */}
-      {!showRescuePanel && !showCatchupPanel && !showStartMonitorPanel && !showSettingsPanel && (
-        <ToolBar
-          isMonitoring={isMonitoring}
-          isPaused={isPaused}
-          isLoading={isLoading}
-          courseName={activeCourseName}
-          onUpload={handleUpload}
-          onStartMonitor={handleOpenStartMonitor}
-          onStopMonitor={handleStopMonitor}
-          onPauseResume={handlePauseResume}
-          onCatchup={handleCatchup}
-          onSettings={handleOpenSettings}
-        />
-      )}
+      <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
+        {/* 工具栏 */}
+        {!showStartMonitorPanel && !showSettingsPanel && (
+          <ToolBar
+            isMonitoring={isMonitoring}
+            isPaused={isPaused}
+            isLoading={isLoading}
+            courseName={activeCourseName}
+            onUpload={handleUpload}
+            onStartMonitor={handleOpenStartMonitor}
+            onStopMonitor={handleStopMonitor}
+            onPauseResume={handlePauseResume}
+            onCatchup={handleCatchup}
+            onSettings={handleOpenSettings}
+            transcriptExpanded={transcriptExpanded}
+            aiExpanded={aiExpanded}
+            onToggleTranscript={() => setTranscriptExpanded((prev) => !prev)}
+            onToggleAI={() => {
+              setAiMode("catchup");
+              setAiExpanded((prev) => !prev);
+            }}
+            onMoreChange={setToolbarMoreExpanded}
+          />
+        )}
+
+        {!showStartMonitorPanel && !showSettingsPanel && (transcriptExpanded || aiExpanded) && (
+          <div className="mt-1 min-h-0 flex-1 overflow-hidden">
+            <div className={`grid h-full min-h-0 gap-2 ${aiExpanded && transcriptExpanded ? "grid-cols-[38%_62%]" : "grid-cols-1"}`}>
+              {transcriptExpanded && (
+                <div className="min-h-0">
+                  <TranscriptViewer title="课堂字幕" pollIntervalMs={5000} />
+                </div>
+              )}
+
+              {aiExpanded && (
+                <div className="min-h-0">
+                  <InlineAIChat visible={aiExpanded} mode={aiMode} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <StartMonitorPanel
         visible={showStartMonitorPanel}
@@ -235,15 +300,9 @@ function MainApp() {
         onSaved={(message) => addToast(message, "success")}
       />
 
-      {/* 救场面板 */}
-      <RescuePanel visible={showRescuePanel} onClose={handleCloseRescue} />
-
-      {/* 课堂进度面板 */}
-      <CatchupPanel visible={showCatchupPanel} onClose={handleCloseCatchup} />
-
       {/* 点名警报覆盖层 */}
       <AlertOverlay
-        active={alertActive && !showRescuePanel}
+        active={alertActive}
         level={lastAlert?.level ?? "danger"}
         keywords={lastAlert?.keywords ?? []}
         text={lastAlert?.text ?? ""}
