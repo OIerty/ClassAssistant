@@ -63,23 +63,29 @@ interface MarkdownRendererProps {
 function normalizeMathDelimiters(raw: string): string {
   if (!raw) return "";
 
-  const protectedBlocks: string[] = [];
-  const contentWithoutCode = raw.replace(/```[\s\S]*?```/g, (match) => {
-    const token = `__CODE_BLOCK_${protectedBlocks.length}__`;
-    protectedBlocks.push(match);
+  const protectedSegments: string[] = [];
+  let contentWithoutCode = raw.replace(/```[\s\S]*?```/g, (match) => {
+    const token = `__CODE_SEGMENT_${protectedSegments.length}__`;
+    protectedSegments.push(match);
+    return token;
+  });
+
+  contentWithoutCode = contentWithoutCode.replace(/`[^`\n]*`/g, (match) => {
+    const token = `__CODE_SEGMENT_${protectedSegments.length}__`;
+    protectedSegments.push(match);
     return token;
   });
 
   // 支持 LaTeX 括号分隔符。
-  let normalized = contentWithoutCode
-    .replace(/\\{1,2}\[([\s\S]+?)\\{1,2}\]/g, (_match, expr) => `$$${expr}$$`)
-    .replace(/\\{1,2}\(([\s\S]+?)\\{1,2}\)/g, (_match, expr) => `$${expr}$`);
+    let normalized = contentWithoutCode
+      .replace(/\\{1,2}\[([\s\S]+?)\\{1,2}\]/g, (_match, expr) => `$$${String(expr).trim()}$$`)
+      .replace(/\\{1,2}\(([\s\S]+?)\\{1,2}\)/g, (_match, expr) => `$${String(expr).trim()}$`);
 
   // 兼容部分模型输出的 \$...\$ 写法。
-  normalized = normalized.replace(/\\{1,2}\$([^\n]+?)\\{1,2}\$/g, (_match, expr) => `$${expr}$`);
+    normalized = normalized.replace(/\\{1,2}\$([^\n]+?)\\{1,2}\$/g, (_match, expr) => `$${String(expr).trim()}$`);
 
-  protectedBlocks.forEach((block, idx) => {
-    normalized = normalized.replace(`__CODE_BLOCK_${idx}__`, block);
+    protectedSegments.forEach((segment, idx) => {
+      normalized = normalized.replace(`__CODE_SEGMENT_${idx}__`, segment);
   });
 
   return normalized;

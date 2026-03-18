@@ -231,13 +231,18 @@ export default function SettingsPanel({ visible, onClose, onSaved }: SettingsPan
                           ))}
                         </select>
                       ) : (
-                        <input
-                          type={field.type ?? "text"}
-                          value={envValues[field.key] || ""}
-                          onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                          placeholder={field.placeholder}
-                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50 focus:bg-white/8"
-                        />
+                        <>
+                          <input
+                            type={field.type ?? "text"}
+                            value={envValues[field.key] || ""}
+                            onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                            placeholder={field.placeholder}
+                            className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white outline-none transition focus:border-cyan-400/50 focus:bg-white/8"
+                          />
+                          {field.key === "DASHSCOPE_ASR_MODEL" ? (
+                            <span className="text-[10px] text-white/45">仅从 env 读取；修改后需重启后端生效。</span>
+                          ) : null}
+                        </>
                       )}
                     </label>
                   ))}

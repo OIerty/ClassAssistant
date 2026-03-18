@@ -174,6 +174,26 @@ class WindowsBuiltInASR(BaseASR):
         self._ready_event = threading.Event()
         self._start_error: str | None = None
 
+    @staticmethod
+    def _diagnose_start_failure(exc: Exception) -> str:
+        raw = str(exc).strip() or exc.__class__.__name__
+        lowered = raw.lower()
+
+        hints = [
+            "请确认系统“设置 > 隐私和安全性 > 麦克风”已允许应用访问麦克风",
+            "请确认系统已安装语音识别能力与中文语音包",
+            "请确认没有其他应用独占麦克风设备",
+        ]
+
+        if "access is denied" in lowered or "0x80070005" in lowered:
+            hints.insert(0, "检测到权限拒绝，通常是麦克风隐私权限未开启")
+        elif "class not registered" in lowered or "0x80040154" in lowered:
+            hints.insert(0, "检测到 WinRT 组件不可用，请检查 Windows 语音组件安装")
+        elif "0x80045509" in lowered:
+            hints.insert(0, "检测到语音识别策略限制，请先在 Windows 中启用在线语音识别")
+
+        return f"WindowsBuiltInASR recognition failed: {raw}. {'；'.join(hints)}"
+
     def start(self):
         if os.name != "nt":
             raise RuntimeError("WindowsBuiltInASR only available on Windows")
@@ -251,10 +271,11 @@ class WindowsBuiltInASR(BaseASR):
             compile_result = await recognizer.compile_constraints_async()
             compile_status = str(getattr(compile_result, "status", "unknown"))
             if "success" not in compile_status.lower():
-                logger.warning(
-                    "[WindowsBuiltInASR] compile constraints status: %s",
-                    compile_status,
-                )
+                msg = f"compile constraints failed, status={compile_status}"
+                self._start_error = msg
+                self._ready_event.set()
+                logger.error("[WindowsBuiltInASR] %s", msg)
+                return
 
             session = recognizer.continuous_recognition_session
 
@@ -271,6 +292,7 @@ class WindowsBuiltInASR(BaseASR):
                     logger.exception("[WindowsBuiltInASR] result callback failed")
 
             session.result_generated += _on_result_generated
+            logger.info("[WindowsBuiltInASR] starting continuous recognition session...")
             await session.start_async()
             logger.info("[WindowsBuiltInASR] continuous recognition running")
             self._ready_event.set()
@@ -282,9 +304,9 @@ class WindowsBuiltInASR(BaseASR):
                 await session.stop_async()
             except Exception:
                 logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
-        except Exception:
+        except Exception as exc:
             if not self._ready_event.is_set():
-                self._start_error = "WindowsBuiltInASR recognition failed"
+                self._start_error = self._diagnose_start_failure(exc)
                 self._ready_event.set()
             logger.exception("[WindowsBuiltInASR] recognition failed")
         finally:
