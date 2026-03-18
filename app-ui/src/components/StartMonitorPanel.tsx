@@ -131,6 +131,9 @@ export default function StartMonitorPanel({
           <option value="fun-asr-realtime" />
           <option value="paraformer-realtime-v2" />
         </datalist>
+        <span className="text-[11px] text-white/45">
+          仅当设置中的 ASR_MODE=dashscope 时生效；若切换到 windows/local/seed-asr，将忽略该字段。
+        </span>
       </label>
 
       <div className="min-h-5 text-xs text-white/45">
