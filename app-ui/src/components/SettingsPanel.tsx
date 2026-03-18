@@ -51,7 +51,11 @@ const ENV_SECTIONS: Array<{ title: string; fields: EnvFieldConfig[] }> = [
     title: "音频与其他",
     fields: [
       { key: "DASHSCOPE_API_KEY", label: "DashScope API Key", type: "password" },
-      { key: "DASHSCOPE_ASR_MODEL", label: "DashScope ASR 模型", placeholder: "fun-asr-realtime" },
+      {
+        key: "DASHSCOPE_ASR_MODEL",
+        label: "DashScope ASR 模型（仅 env，修改后重启后端生效）",
+        placeholder: "fun-asr-realtime",
+      },
       { key: "AUDIO_SAMPLE_RATE", label: "采样率", type: "number", placeholder: "16000" },
       { key: "AUDIO_CHANNELS", label: "声道数", type: "number", placeholder: "1" },
       { key: "AUDIO_CHUNK_SIZE", label: "Chunk Size", type: "number", placeholder: "3200" },

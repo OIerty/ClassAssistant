@@ -34,7 +34,6 @@ export async function uploadPPT(file: File): Promise<{
 export interface StartMonitorPayload {
   course_name: string;
   cite_filename?: string | null;
-  asr_model?: string | null;
 }
 
 export interface StopMonitorResponse {
@@ -59,7 +58,11 @@ export async function startMonitor(
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("启动监控失败");
-  return res.json();
+  const data = await res.json();
+  if (data.status && data.status !== "started") {
+    throw new Error(data.message || "启动监控失败");
+  }
+  return data;
 }
 
 /**

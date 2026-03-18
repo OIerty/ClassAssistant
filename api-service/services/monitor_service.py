@@ -238,10 +238,22 @@ class MonitorService:
         }
 
     def _create_and_start_asr(self):
+        mode = os.getenv("ASR_MODE", "local").strip().lower()
+        logger.info("[Monitor] creating ASR instance, mode=%s", mode)
+
         self._asr = create_asr(on_text=self._on_asr_text, asr_model=self._asr_model or None)
+        logger.info("[Monitor] ASR instance created: %s", type(self._asr).__name__)
+
         if isinstance(self._asr, (LocalASR, WindowsBuiltInASR)):
             self._asr.on_text = self._on_local_asr_text
-        self._asr.start()
+
+        try:
+            self._asr.start()
+            logger.info("[Monitor] ASR started: %s", type(self._asr).__name__)
+        except Exception as exc:
+            logger.exception("[Monitor] ASR start failed: %s", exc)
+            self._asr = None
+            raise RuntimeError(f"ASR 启动失败: {exc}") from exc
 
     async def start(self, course_name: str = "", material_name: str = "", asr_model: str = "") -> dict:
         """启动监控服务"""
@@ -264,7 +276,16 @@ class MonitorService:
 
         # 创建 ASR 实例并启动
         # 本地 ASR 使用独立的回调（每句新建一行），线上 ASR 使用流式回调
-        self._create_and_start_asr()
+        try:
+            self._create_and_start_asr()
+        except Exception as exc:
+            self.is_monitoring = False
+            self.is_paused = False
+            self._loop = None
+            return {
+                "status": "error",
+                "message": str(exc),
+            }
 
         return {"status": "started", "message": "开始摸鱼模式 🎣 录音和监控已启动"}
 

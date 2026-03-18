@@ -193,16 +193,13 @@ function MainApp() {
     async ({
       courseName,
       citeFilename,
-      asrModel,
     }: {
       courseName: string;
       citeFilename: string | null;
-      asrModel: string;
     }) => {
       await startMonitor({
         course_name: courseName,
         cite_filename: citeFilename,
-        asr_model: asrModel,
       });
       connect();
       setIsMonitoring(true);

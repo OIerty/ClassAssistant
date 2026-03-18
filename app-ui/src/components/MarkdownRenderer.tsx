@@ -63,13 +63,24 @@ interface MarkdownRendererProps {
 function normalizeMathDelimiters(raw: string): string {
   if (!raw) return "";
 
+  const protectedBlocks: string[] = [];
+  const contentWithoutCode = raw.replace(/```[\s\S]*?```/g, (match) => {
+    const token = `__CODE_BLOCK_${protectedBlocks.length}__`;
+    protectedBlocks.push(match);
+    return token;
+  });
+
   // 支持 LaTeX 括号分隔符。
-  let normalized = raw
-    .replace(/\\\\\[([\s\S]+?)\\\\\]/g, (_match, expr) => `$$${expr}$$`)
-    .replace(/\\\\\(([\s\S]+?)\\\\\)/g, (_match, expr) => `$${expr}$`);
+  let normalized = contentWithoutCode
+    .replace(/\\{1,2}\[([\s\S]+?)\\{1,2}\]/g, (_match, expr) => `$$${expr}$$`)
+    .replace(/\\{1,2}\(([\s\S]+?)\\{1,2}\)/g, (_match, expr) => `$${expr}$`);
 
   // 兼容部分模型输出的 \$...\$ 写法。
-  normalized = normalized.replace(/\\\$([^\n]+?)\\\$/g, (_match, expr) => `$${expr}$`);
+  normalized = normalized.replace(/\\{1,2}\$([^\n]+?)\\{1,2}\$/g, (_match, expr) => `$${expr}$`);
+
+  protectedBlocks.forEach((block, idx) => {
+    normalized = normalized.replace(`__CODE_BLOCK_${idx}__`, block);
+  });
 
   return normalized;
 }
@@ -80,7 +91,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
   return (
     <div className={`markdown-renderer text-xs leading-relaxed text-white/88 ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: true }]]}
         rehypePlugins={[rehypeRaw, rehypeKatex, [rehypeSanitize, sanitizeSchema]]}
         components={{
           p: (props) => <p className="mb-2 last:mb-0" {...props} />,

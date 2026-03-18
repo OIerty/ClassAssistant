@@ -171,16 +171,41 @@ class WindowsBuiltInASR(BaseASR):
         super().__init__(on_text)
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._ready_event = threading.Event()
+        self._start_error: str | None = None
 
     def start(self):
+        if os.name != "nt":
+            raise RuntimeError("WindowsBuiltInASR only available on Windows")
+
+        # 预检依赖，避免外层返回已启动但内部立刻失败。
+        try:
+            from winsdk.windows.media.speechrecognition import SpeechRecognizer  # noqa: F401
+        except Exception as exc:
+            raise RuntimeError(f"winsdk import failed: {exc}") from exc
+
         self._running = True
         self._stop_event.clear()
+        self._ready_event.clear()
+        self._start_error = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+
+        if not self._ready_event.wait(timeout=5):
+            self.stop()
+            raise RuntimeError("WindowsBuiltInASR start timeout")
+
+        if self._start_error:
+            err = self._start_error
+            self.stop()
+            raise RuntimeError(err)
+
         logger.info("[WindowsBuiltInASR] started")
 
     def _run(self):
         if os.name != "nt":
+            self._start_error = "WindowsBuiltInASR only available on Windows"
+            self._ready_event.set()
             logger.error("[WindowsBuiltInASR] only available on Windows")
             return
 
@@ -188,6 +213,9 @@ class WindowsBuiltInASR(BaseASR):
             import asyncio
             asyncio.run(self._run_async())
         except Exception:
+            if not self._ready_event.is_set():
+                self._start_error = "WindowsBuiltInASR run loop failed"
+                self._ready_event.set()
             logger.exception("[WindowsBuiltInASR] run loop failed")
 
     async def _run_async(self):
@@ -197,7 +225,9 @@ class WindowsBuiltInASR(BaseASR):
                 SpeechRecognitionScenario,
                 SpeechRecognitionTopicConstraint,
             )
-        except Exception:
+        except Exception as exc:
+            self._start_error = f"winsdk import failed: {exc}"
+            self._ready_event.set()
             logger.exception(
                 "[WindowsBuiltInASR] failed to import winsdk. Please install dependency: winsdk"
             )
@@ -243,6 +273,7 @@ class WindowsBuiltInASR(BaseASR):
             session.result_generated += _on_result_generated
             await session.start_async()
             logger.info("[WindowsBuiltInASR] continuous recognition running")
+            self._ready_event.set()
 
             while not self._stop_event.is_set():
                 await asyncio.sleep(0.2)
@@ -252,6 +283,9 @@ class WindowsBuiltInASR(BaseASR):
             except Exception:
                 logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
         except Exception:
+            if not self._ready_event.is_set():
+                self._start_error = "WindowsBuiltInASR recognition failed"
+                self._ready_event.set()
             logger.exception("[WindowsBuiltInASR] recognition failed")
         finally:
             recognizer = None
@@ -261,6 +295,7 @@ class WindowsBuiltInASR(BaseASR):
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)
+        self._ready_event.clear()
         logger.info("[WindowsBuiltInASR] stopped")
 
 
@@ -699,6 +734,7 @@ def create_asr(on_text: Callable[[str, bool], None], asr_model: str | None = Non
         BaseASR 子类实例
     """
     mode = os.getenv("ASR_MODE", "local").lower()
+    logger.info("[ASR] mode=%s, dashscope_model=%s", mode, (asr_model or "").strip() or "(env/default)")
     if mode == "local":
         return LocalASR(on_text)
     elif mode == "windows":
