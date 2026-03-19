@@ -205,6 +205,11 @@ class WindowsBuiltInASR(BaseASR):
         return f"WindowsBuiltInASR recognition failed: {raw}. {'；'.join(hints)}"
 
     @staticmethod
+    def _is_session_already_stopped_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return "0x80131509" in text
+
+    @staticmethod
     def _bind_session_event(session, event_name: str, handler):
         """兼容不同 winsdk 投影的事件绑定方式。"""
         candidate_names = WindowsBuiltInASR._event_name_variants(event_name)
@@ -316,12 +321,20 @@ class WindowsBuiltInASR(BaseASR):
 
             # 使用听写约束，提升课堂口语场景识别效果
             try:
-                recognizer.constraints.append(
-                    SpeechRecognitionTopicConstraint(
-                        SpeechRecognitionScenario.dictation,
-                        "dictation",
-                    )
+                dictation_scenario = (
+                    getattr(SpeechRecognitionScenario, "dictation", None)
+                    or getattr(SpeechRecognitionScenario, "Dictation", None)
+                    or getattr(SpeechRecognitionScenario, "DICTATION", None)
                 )
+                if dictation_scenario is not None:
+                    recognizer.constraints.append(
+                        SpeechRecognitionTopicConstraint(
+                            dictation_scenario,
+                            "dictation",
+                        )
+                    )
+                else:
+                    logger.info("[WindowsBuiltInASR] dictation scenario unavailable, using default constraints")
             except Exception:
                 logger.exception("[WindowsBuiltInASR] failed to add dictation constraint")
 
@@ -382,10 +395,6 @@ class WindowsBuiltInASR(BaseASR):
                 if self._restart_event.is_set() and self._running:
                     self._restart_event.clear()
                     try:
-                        await session.stop_async()
-                    except Exception:
-                        logger.exception("[WindowsBuiltInASR] failed to stop before restart")
-                    try:
                         await session.start_async()
                         logger.info("[WindowsBuiltInASR] continuous recognition restarted")
                     except Exception:
@@ -394,8 +403,11 @@ class WindowsBuiltInASR(BaseASR):
 
             try:
                 await session.stop_async()
-            except Exception:
-                logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
+            except Exception as exc:
+                if self._is_session_already_stopped_error(exc):
+                    logger.info("[WindowsBuiltInASR] session already stopped")
+                else:
+                    logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
         except Exception as exc:
             if not self._ready_event.is_set():
                 self._start_error = self._diagnose_start_failure(exc)
