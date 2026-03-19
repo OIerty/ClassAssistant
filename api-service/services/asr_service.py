@@ -313,101 +313,115 @@ class WindowsBuiltInASR(BaseASR):
             )
             return
 
-        recognizer = None
-        result_binding = None
-        completed_binding = None
+        has_reported_ready = False
         try:
-            recognizer = SpeechRecognizer()
+            while self._running and not self._stop_event.is_set():
+                recognizer = None
+                session = None
+                result_binding = None
+                completed_binding = None
+                self._restart_event.clear()
 
-            # 使用听写约束，提升课堂口语场景识别效果
-            try:
-                dictation_scenario = (
-                    getattr(SpeechRecognitionScenario, "dictation", None)
-                    or getattr(SpeechRecognitionScenario, "Dictation", None)
-                    or getattr(SpeechRecognitionScenario, "DICTATION", None)
-                )
-                if dictation_scenario is not None:
-                    recognizer.constraints.append(
-                        SpeechRecognitionTopicConstraint(
-                            dictation_scenario,
-                            "dictation",
-                        )
+                recognizer = SpeechRecognizer()
+
+                # 使用听写约束，提升课堂口语场景识别效果。
+                try:
+                    scenario_name = next(
+                        (name for name in dir(SpeechRecognitionScenario) if "dictat" in name.lower()),
+                        None,
                     )
-                else:
-                    logger.info("[WindowsBuiltInASR] dictation scenario unavailable, using default constraints")
-            except Exception:
-                logger.exception("[WindowsBuiltInASR] failed to add dictation constraint")
-
-            compile_result = await recognizer.compile_constraints_async()
-            compile_status_obj = getattr(compile_result, "status", None)
-
-            compile_status_name = "unknown"
-            if compile_status_obj is not None:
-                compile_status_name = getattr(compile_status_obj, "name", None) or str(compile_status_obj)
-
-            is_compile_success = False
-            if compile_status_obj is not None:
-                try:
-                    # WinRT SpeechRecognitionResultStatus.Success 枚举值通常为 0。
-                    is_compile_success = int(compile_status_obj) == 0
+                    dictation_scenario = getattr(SpeechRecognitionScenario, scenario_name) if scenario_name else None
+                    if dictation_scenario is not None:
+                        recognizer.constraints.append(
+                            SpeechRecognitionTopicConstraint(
+                                dictation_scenario,
+                                "dictation",
+                            )
+                        )
+                    else:
+                        logger.info("[WindowsBuiltInASR] dictation scenario unavailable, using default constraints")
                 except Exception:
-                    is_compile_success = False
+                    logger.exception("[WindowsBuiltInASR] failed to add dictation constraint")
 
-            if not is_compile_success:
-                status_lower = compile_status_name.lower()
-                is_compile_success = status_lower in {"success", "speechrecognitionresultstatus.success"}
+                compile_result = await recognizer.compile_constraints_async()
+                compile_status_obj = getattr(compile_result, "status", None)
 
-            if not is_compile_success:
-                msg = f"compile constraints failed, status={compile_status_name}"
-                self._start_error = msg
-                self._ready_event.set()
-                logger.error("[WindowsBuiltInASR] %s", msg)
-                return
+                compile_status_name = "unknown"
+                if compile_status_obj is not None:
+                    compile_status_name = getattr(compile_status_obj, "name", None) or str(compile_status_obj)
 
-            session = recognizer.continuous_recognition_session
-
-            def _on_result_generated(_sender, args):
-                if not self._running:
-                    return
-                try:
-                    result = getattr(args, "result", None)
-                    text = (getattr(result, "text", "") or "").strip()
-                    if text:
-                        # 连续识别回调按整句回调，视作 final
-                        self.on_text(text, True)
-                except Exception:
-                    logger.exception("[WindowsBuiltInASR] result callback failed")
-
-            def _on_completed(_sender, _args):
-                if not self._running or self._stop_event.is_set():
-                    return
-                logger.warning("[WindowsBuiltInASR] session completed unexpectedly, scheduling restart")
-                self._restart_event.set()
-
-            result_binding = self._bind_session_event(session, "result_generated", _on_result_generated)
-            completed_binding = self._bind_session_event(session, "completed", _on_completed)
-            logger.info("[WindowsBuiltInASR] starting continuous recognition session...")
-            await session.start_async()
-            logger.info("[WindowsBuiltInASR] continuous recognition running")
-            self._ready_event.set()
-
-            while not self._stop_event.is_set():
-                if self._restart_event.is_set() and self._running:
-                    self._restart_event.clear()
+                is_compile_success = False
+                if compile_status_obj is not None:
                     try:
-                        await session.start_async()
-                        logger.info("[WindowsBuiltInASR] continuous recognition restarted")
+                        # WinRT SpeechRecognitionResultStatus.Success 枚举值通常为 0。
+                        is_compile_success = int(compile_status_obj) == 0
                     except Exception:
-                        logger.exception("[WindowsBuiltInASR] failed to restart continuous recognition")
-                await asyncio.sleep(0.2)
+                        is_compile_success = False
 
-            try:
-                await session.stop_async()
-            except Exception as exc:
-                if self._is_session_already_stopped_error(exc):
-                    logger.info("[WindowsBuiltInASR] session already stopped")
+                if not is_compile_success:
+                    status_lower = compile_status_name.lower()
+                    is_compile_success = status_lower in {"success", "speechrecognitionresultstatus.success"}
+
+                if not is_compile_success:
+                    msg = f"compile constraints failed, status={compile_status_name}"
+                    self._start_error = msg
+                    self._ready_event.set()
+                    logger.error("[WindowsBuiltInASR] %s", msg)
+                    return
+
+                session = recognizer.continuous_recognition_session
+
+                def _on_result_generated(_sender, args):
+                    if not self._running:
+                        return
+                    try:
+                        result = getattr(args, "result", None)
+                        text = (getattr(result, "text", "") or "").strip()
+                        if text:
+                            self.on_text(text, True)
+                    except Exception:
+                        logger.exception("[WindowsBuiltInASR] result callback failed")
+
+                def _on_completed(_sender, _args):
+                    if not self._running or self._stop_event.is_set():
+                        return
+                    logger.warning("[WindowsBuiltInASR] session completed unexpectedly, scheduling rebuild")
+                    self._restart_event.set()
+
+                result_binding = self._bind_session_event(session, "result_generated", _on_result_generated)
+                completed_binding = self._bind_session_event(session, "completed", _on_completed)
+                logger.info("[WindowsBuiltInASR] starting continuous recognition session...")
+                await session.start_async()
+
+                if not has_reported_ready:
+                    logger.info("[WindowsBuiltInASR] continuous recognition running")
+                    self._ready_event.set()
+                    has_reported_ready = True
                 else:
-                    logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
+                    logger.info("[WindowsBuiltInASR] continuous recognition rebuilt")
+
+                while not self._stop_event.is_set() and not self._restart_event.is_set():
+                    await asyncio.sleep(0.2)
+
+                try:
+                    await session.stop_async()
+                except Exception as exc:
+                    if self._is_session_already_stopped_error(exc):
+                        logger.info("[WindowsBuiltInASR] session already stopped")
+                    else:
+                        logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
+
+                try:
+                    self._unbind_session_event(session, result_binding)
+                    self._unbind_session_event(session, completed_binding)
+                except Exception:
+                    logger.exception("[WindowsBuiltInASR] failed to unbind session callbacks")
+
+                if self._restart_event.is_set() and self._running and not self._stop_event.is_set():
+                    self._restart_event.clear()
+                    continue
+
+                break
         except Exception as exc:
             if not self._ready_event.is_set():
                 self._start_error = self._diagnose_start_failure(exc)
@@ -415,14 +429,7 @@ class WindowsBuiltInASR(BaseASR):
             self._running = False
             logger.exception("[WindowsBuiltInASR] recognition failed")
         finally:
-            try:
-                if recognizer is not None:
-                    session = recognizer.continuous_recognition_session
-                    self._unbind_session_event(session, result_binding)
-                    self._unbind_session_event(session, completed_binding)
-            except Exception:
-                logger.exception("[WindowsBuiltInASR] failed to unbind session callbacks")
-            recognizer = None
+            self._restart_event.clear()
 
     def stop(self):
         self._running = False
