@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import struct
+import asyncio
 import threading
 import uuid
 from json import JSONDecodeError
@@ -172,7 +173,16 @@ class WindowsBuiltInASR(BaseASR):
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._ready_event = threading.Event()
+        self._restart_event = threading.Event()
         self._start_error: str | None = None
+
+    @staticmethod
+    def _event_name_variants(event_name: str) -> list[str]:
+        parts = event_name.split("_")
+        lower_camel = "".join(part.capitalize() if idx else part for idx, part in enumerate(parts))
+        upper_camel = "".join(part.capitalize() for part in parts)
+        compact = event_name.replace("_", "")
+        return [event_name, compact, lower_camel, upper_camel]
 
     @staticmethod
     def _diagnose_start_failure(exc: Exception) -> str:
@@ -197,17 +207,16 @@ class WindowsBuiltInASR(BaseASR):
     @staticmethod
     def _bind_session_event(session, event_name: str, handler):
         """兼容不同 winsdk 投影的事件绑定方式。"""
-        candidate_names = [
-            event_name,
-            event_name.replace("_", ""),
-            "".join(part.capitalize() if idx else part for idx, part in enumerate(event_name.split("_"))),
-        ]
+        candidate_names = WindowsBuiltInASR._event_name_variants(event_name)
 
         for name in candidate_names:
             if hasattr(session, name):
-                event_obj = getattr(session, name)
-                event_obj += handler
-                return ("attr", name, handler)
+                try:
+                    # 通过属性增强赋值触发 WinRT 事件订阅语义。
+                    exec(f"session.{name} += handler", {"session": session, "handler": handler})
+                    return ("attr", name, handler)
+                except Exception:
+                    pass
 
             add_name = f"add_{name}"
             if hasattr(session, add_name):
@@ -225,8 +234,13 @@ class WindowsBuiltInASR(BaseASR):
 
         bind_type, event_name, token_or_handler = binding
         if bind_type == "attr" and hasattr(session, event_name):
-            event_obj = getattr(session, event_name)
-            event_obj -= token_or_handler
+            try:
+                exec(
+                    f"session.{event_name} -= handler",
+                    {"session": session, "handler": token_or_handler},
+                )
+            except Exception:
+                logger.exception("[WindowsBuiltInASR] failed to unbind attr event: %s", event_name)
             return
 
         if bind_type == "add":
@@ -247,6 +261,7 @@ class WindowsBuiltInASR(BaseASR):
         self._running = True
         self._stop_event.clear()
         self._ready_event.clear()
+        self._restart_event.clear()
         self._start_error = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -270,12 +285,12 @@ class WindowsBuiltInASR(BaseASR):
             return
 
         try:
-            import asyncio
             asyncio.run(self._run_async())
         except Exception:
             if not self._ready_event.is_set():
                 self._start_error = "WindowsBuiltInASR run loop failed"
                 self._ready_event.set()
+            self._running = False
             logger.exception("[WindowsBuiltInASR] run loop failed")
 
     async def _run_async(self):
@@ -295,6 +310,7 @@ class WindowsBuiltInASR(BaseASR):
 
         recognizer = None
         result_binding = None
+        completed_binding = None
         try:
             recognizer = SpeechRecognizer()
 
@@ -349,13 +365,31 @@ class WindowsBuiltInASR(BaseASR):
                 except Exception:
                     logger.exception("[WindowsBuiltInASR] result callback failed")
 
+            def _on_completed(_sender, _args):
+                if not self._running or self._stop_event.is_set():
+                    return
+                logger.warning("[WindowsBuiltInASR] session completed unexpectedly, scheduling restart")
+                self._restart_event.set()
+
             result_binding = self._bind_session_event(session, "result_generated", _on_result_generated)
+            completed_binding = self._bind_session_event(session, "completed", _on_completed)
             logger.info("[WindowsBuiltInASR] starting continuous recognition session...")
             await session.start_async()
             logger.info("[WindowsBuiltInASR] continuous recognition running")
             self._ready_event.set()
 
             while not self._stop_event.is_set():
+                if self._restart_event.is_set() and self._running:
+                    self._restart_event.clear()
+                    try:
+                        await session.stop_async()
+                    except Exception:
+                        logger.exception("[WindowsBuiltInASR] failed to stop before restart")
+                    try:
+                        await session.start_async()
+                        logger.info("[WindowsBuiltInASR] continuous recognition restarted")
+                    except Exception:
+                        logger.exception("[WindowsBuiltInASR] failed to restart continuous recognition")
                 await asyncio.sleep(0.2)
 
             try:
@@ -366,14 +400,16 @@ class WindowsBuiltInASR(BaseASR):
             if not self._ready_event.is_set():
                 self._start_error = self._diagnose_start_failure(exc)
                 self._ready_event.set()
+            self._running = False
             logger.exception("[WindowsBuiltInASR] recognition failed")
         finally:
             try:
                 if recognizer is not None:
                     session = recognizer.continuous_recognition_session
                     self._unbind_session_event(session, result_binding)
+                    self._unbind_session_event(session, completed_binding)
             except Exception:
-                logger.exception("[WindowsBuiltInASR] failed to unbind result callback")
+                logger.exception("[WindowsBuiltInASR] failed to unbind session callbacks")
             recognizer = None
 
     def stop(self):

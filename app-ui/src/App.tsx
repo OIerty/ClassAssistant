@@ -65,6 +65,13 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
+    // 警报出现时保持关键面板展开，避免操作中断。
+    if (!alertActive || !isMonitoring) return;
+    setTranscriptExpanded(true);
+    setAiExpanded(true);
+  }, [alertActive, isMonitoring]);
+
+  useEffect(() => {
     if (showStartMonitorPanel || showSettingsPanel) return;
 
     (async () => {
