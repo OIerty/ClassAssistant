@@ -29,6 +29,11 @@ class StartMonitorRequest(BaseModel):
     cite_filename: Optional[str] = None
 
 
+class IngestAsrTextRequest(BaseModel):
+    text: str
+    is_final: bool = True
+
+
 @router.post("/start_monitor")
 async def start_monitor(request: StartMonitorRequest):
     """
@@ -89,6 +94,12 @@ async def pause_monitor():
 @router.post("/resume_monitor")
 async def resume_monitor():
     return await monitor_service.resume()
+
+
+@router.post("/ingest_asr_text")
+async def ingest_asr_text(request: IngestAsrTextRequest):
+    """接收浏览器 Web Speech 识别结果并写入课堂转录。"""
+    return monitor_service.ingest_external_text(request.text, request.is_final)
 
 
 @router.get("/monitor_status")

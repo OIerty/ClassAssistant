@@ -5,7 +5,7 @@
  */
 
 // 后端地址（开发环境）
-const API_BASE = "http://127.0.0.1:8765/api";
+export const API_BASE = "http://127.0.0.1:8765/api";
 
 /**
  * 上传 PPT 文件到后端进行解析
@@ -85,6 +85,24 @@ export async function resumeMonitor(): Promise<{ status: string; message: string
 export async function stopMonitorWithSummary(): Promise<StopMonitorResponse> {
   const res = await fetch(`${API_BASE}/stop_monitor`, { method: "POST" });
   if (!res.ok) throw new Error("停止监控失败");
+  return res.json();
+}
+
+export async function ingestAsrText(payload: {
+  text: string;
+  is_final: boolean;
+}): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/ingest_asr_text`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "浏览器语音文本注入失败");
+  }
+
   return res.json();
 }
 
@@ -209,6 +227,18 @@ export async function getSettings(): Promise<{
   const res = await fetch(`${API_BASE}/settings`);
   if (!res.ok) throw new Error("读取设置失败");
   return res.json();
+}
+
+export async function getConfiguredAsrMode(): Promise<string> {
+  const res = await getSettings();
+  const match = res.content.match(/^ASR_MODE\s*=\s*(.+)$/m);
+  return match?.[1]?.trim().toLowerCase() || "local";
+}
+
+export async function getConfiguredWebspeechLang(): Promise<string> {
+  const res = await getSettings();
+  const match = res.content.match(/^WEBSPEECH_LANG\s*=\s*(.+)$/m);
+  return match?.[1]?.trim() || "zh-CN";
 }
 
 export async function saveSettings(content: string): Promise<{
