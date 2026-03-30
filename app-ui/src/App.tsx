@@ -4,7 +4,7 @@
  * 整合所有子组件，管理全局状态
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import TitleBar from "./components/TitleBar";
 import ToolBar from "./components/ToolBar";
 import AlertOverlay from "./components/AlertOverlay";
@@ -20,9 +20,13 @@ import {
   startMonitor,
   pauseMonitor,
   resumeMonitor,
+  stopMonitor,
   stopMonitorWithSummary,
+  getConfiguredAsrMode,
+  getConfiguredWebspeechLang,
 } from "./services/api";
 import { applyUiStyleSettings, readUiStyleSettings } from "./services/preferences";
+import { createBrowserAsrSession, type BrowserAsrSession } from "./services/browserAsr";
 
 // Toast ID 计数器
 let toastId = 0;
@@ -53,6 +57,9 @@ function MainApp() {
   const [citeRefreshToken, setCiteRefreshToken] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activeCourseName, setActiveCourseName] = useState("");
+  const browserAsrSessionRef = useRef<BrowserAsrSession | null>(null);
+  const activeAsrModeRef = useRef("local");
+  const activeBrowserAsrLangRef = useRef("zh-CN");
 
   // WebSocket 连接
   const { lastAlert, alertActive, connect, disconnect, dismissAlert } =
@@ -74,6 +81,30 @@ function MainApp() {
   const removeToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const isBrowserAsrMode = useCallback((mode: string) => {
+    return mode === "webspeech" || mode === "browser" || mode === "edge-webspeech";
+  }, []);
+
+  const stopBrowserAsrSession = useCallback(async () => {
+    const session = browserAsrSessionRef.current;
+    browserAsrSessionRef.current = null;
+    if (session) {
+      await session.stop();
+    }
+  }, []);
+
+  const startBrowserAsrSession = useCallback(async () => {
+    await stopBrowserAsrSession();
+    const session = createBrowserAsrSession(
+      (message) => {
+        addToast(message, message.includes("失败") || message.includes("错误") ? "error" : "info");
+      },
+      { lang: activeBrowserAsrLangRef.current }
+    );
+    browserAsrSessionRef.current = session;
+    await session.start();
+  }, [addToast, stopBrowserAsrSession]);
 
   // ---- 上传 PPT ----
   const handleUpload = useCallback(
@@ -99,11 +130,13 @@ function MainApp() {
   const handleStopMonitor = useCallback(async () => {
     setIsLoading(true);
     try {
+      await stopBrowserAsrSession();
       const res = await stopMonitorWithSummary();
       disconnect();
       setIsMonitoring(false);
       setIsPaused(false);
       setActiveCourseName("");
+      activeAsrModeRef.current = "local";
       addToast(res.message, "info");
       if (res.summary?.filename) {
         addToast(`已自动生成总结: ${res.summary.filename}`, "success");
@@ -125,7 +158,7 @@ function MainApp() {
     } finally {
       setIsLoading(false);
     }
-  }, [disconnect, addToast]);
+  }, [disconnect, addToast, stopBrowserAsrSession]);
 
   const handleOpenStartMonitor = useCallback(() => {
     setShowStartMonitorPanel(true);
@@ -136,11 +169,24 @@ function MainApp() {
     try {
       if (isPaused) {
         const res = await resumeMonitor();
-        connect();
-        setIsPaused(false);
-        addToast(res.message, "success");
+        try {
+          if (isBrowserAsrMode(activeAsrModeRef.current)) {
+            await startBrowserAsrSession();
+          }
+          connect();
+          setIsPaused(false);
+          addToast(res.message, "success");
+        } catch (resumeErr) {
+          await pauseMonitor().catch(() => {
+            /* ignore rollback failure */
+          });
+          throw resumeErr;
+        }
       } else {
         const res = await pauseMonitor();
+        if (isBrowserAsrMode(activeAsrModeRef.current)) {
+          await stopBrowserAsrSession();
+        }
         disconnect();
         setIsPaused(true);
         addToast(res.message, "info");
@@ -153,22 +199,47 @@ function MainApp() {
     } finally {
       setIsLoading(false);
     }
-  }, [isPaused, connect, disconnect, addToast]);
+  }, [isPaused, connect, disconnect, addToast, isBrowserAsrMode, startBrowserAsrSession, stopBrowserAsrSession]);
 
   const handleStartMonitorConfirm = useCallback(
     async ({ courseName, citeFilename }: { courseName: string; citeFilename: string | null }) => {
-      await startMonitor({
-        course_name: courseName,
-        cite_filename: citeFilename,
-      });
-      connect();
-      setIsMonitoring(true);
-      setIsPaused(false);
-      setActiveCourseName(courseName);
-      setShowStartMonitorPanel(false);
-      addToast(courseName ? `开始摸鱼模式 🎣 ${courseName}` : "开始摸鱼模式 🎣", "success");
+      const asrMode = await getConfiguredAsrMode();
+      const webspeechLang = await getConfiguredWebspeechLang();
+      activeAsrModeRef.current = asrMode;
+      activeBrowserAsrLangRef.current = webspeechLang;
+
+      let backendStarted = false;
+      try {
+        await startMonitor({
+          course_name: courseName,
+          cite_filename: citeFilename,
+        });
+        backendStarted = true;
+
+        if (isBrowserAsrMode(asrMode)) {
+          await startBrowserAsrSession();
+        }
+
+        connect();
+        setIsMonitoring(true);
+        setIsPaused(false);
+        setActiveCourseName(courseName);
+        setShowStartMonitorPanel(false);
+        addToast(courseName ? `开始摸鱼模式 🎣 ${courseName}` : "开始摸鱼模式 🎣", "success");
+      } catch (err) {
+        if (backendStarted) {
+          await stopBrowserAsrSession().catch(() => {
+            /* ignore cleanup failure */
+          });
+          await stopMonitor().catch(() => {
+            /* ignore rollback failure */
+          });
+          disconnect();
+        }
+        throw err;
+      }
     },
-    [connect, addToast]
+    [connect, addToast, disconnect, isBrowserAsrMode, startBrowserAsrSession, stopBrowserAsrSession]
   );
 
   // ---- 救场 ----

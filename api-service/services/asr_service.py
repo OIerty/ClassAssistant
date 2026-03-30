@@ -1,8 +1,9 @@
 """
 ASR 语音识别服务
 ================
-支持四种模式：
+支持五种模式：
   - local:     免费语音识别（Google Speech API，无需密钥，需联网）
+    - webspeech: 浏览器 Web Speech 识别前端采集，后端只接收文本
   - mock:      空实现，用于开发测试
   - dashscope: 阿里云百炼 Fun-ASR 实时语音识别
   - seed-asr:  字节跳动 Seed-ASR 大模型语音识别
@@ -63,6 +64,18 @@ class MockASR(BaseASR):
     def stop(self):
         self._running = False
         logger.info("[MockASR] stopped")
+
+
+class BrowserSpeechASR(BaseASR):
+    """WebSpeech 模式占位实现 - 不占用麦克风，由前端注入识别结果。"""
+
+    def start(self):
+        self._running = True
+        logger.info("[BrowserSpeechASR] started (frontend text injection mode)")
+
+    def stop(self):
+        self._running = False
+        logger.info("[BrowserSpeechASR] stopped")
 
 
 # =====================================================================
@@ -588,6 +601,8 @@ def create_asr(on_text: Callable[[str, bool], None]) -> BaseASR:
     mode = os.getenv("ASR_MODE", "local").lower()
     if mode == "local":
         return LocalASR(on_text)
+    elif mode in {"webspeech", "browser", "edge-webspeech"}:
+        return BrowserSpeechASR(on_text)
     elif mode == "dashscope":
         return DashScopeASR(on_text)
     elif mode == "seed-asr":

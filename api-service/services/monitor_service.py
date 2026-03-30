@@ -238,6 +238,14 @@ class MonitorService:
             self._asr.on_text = self._on_local_asr_text
         self._asr.start()
 
+    def ingest_external_text(self, text: str, is_final: bool = True) -> dict:
+        """接收前端浏览器识别文本，并沿用现有 ASR 回调流程。"""
+        if not self.is_monitoring:
+            return {"status": "not_running", "message": "监控服务未在运行"}
+
+        self._on_asr_text(text, is_final)
+        return {"status": "success", "message": "浏览器语音文本已接收"}
+
     async def start(self, course_name: str = "", material_name: str = "") -> dict:
         """启动监控服务"""
         if self.is_monitoring:
