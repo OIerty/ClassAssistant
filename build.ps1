@@ -23,7 +23,11 @@ $API_DIR = Join-Path $ROOT "api-service"
 $UI_DIR = Join-Path $ROOT "app-ui"
 $RELEASE_DIR = Join-Path $ROOT "release"
 $DIST_NAME = "ClassFox-$Version-win-x64"
-$RELEASE_EXE_NAME = "课狐ClassFox.exe"
+
+$tauriConfigPath = Join-Path $UI_DIR "src-tauri\tauri.conf.json"
+$tauriConfig = [IO.File]::ReadAllText($tauriConfigPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+$APP_NAME = $tauriConfig.productName
+$RELEASE_EXE_NAME = "$APP_NAME.exe"
 
 Write-Host ""
 Write-Host "======================================" -ForegroundColor Cyan
@@ -54,7 +58,7 @@ $content = [IO.File]::ReadAllText($file)
 $content = $content -replace '(?m)^version\s*=\s*"[^"]+"', "version = `"$VER_NUM`""
 [IO.File]::WriteAllText($file, $content)
 
-Write-Host "      version 已更新" -ForegroundColor Green
+Write-Host "      version updated" -ForegroundColor Green
 
 # ================================================
 # [2/6] 打包后端（PyInstaller + .venv）
@@ -64,7 +68,7 @@ Write-Host "[2/6] 打包后端 (PyInstaller) ..." -ForegroundColor Yellow
 
 # 检查 .venv 是否存在
 if (-not (Test-Path $VENV_PYINSTALLER)) {
-    Write-Host "[错误] 找不到 .venv 环境！请先运行: python -m venv api-service\.venv 并安装依赖" -ForegroundColor Red
+    Write-Host "[error] .venv not found. Run: python -m venv api-service\\.venv and install dependencies first." -ForegroundColor Red
     exit 1
 }
 
@@ -76,10 +80,11 @@ Push-Location $API_DIR
 try {
     & $VENV_PYINSTALLER backend.spec --clean --noconfirm
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
-} catch {
+}
+catch {
     Pop-Location
     $env:PATH = $origPath
-    Write-Host "[错误] 后端打包失败！" -ForegroundColor Red
+    Write-Host "[error] backend build failed" -ForegroundColor Red
     exit 1
 }
 Pop-Location
@@ -98,9 +103,10 @@ try {
     # --no-bundle: 只编译 exe，跳过 MSI/NSIS 安装包（我们用 zip 分发）
     npx tauri build --no-bundle
     if ($LASTEXITCODE -ne 0) { throw "Tauri build failed" }
-} catch {
+}
+catch {
     Pop-Location
-    Write-Host "[错误] 前端打包失败！" -ForegroundColor Red
+    Write-Host "[error] frontend build failed" -ForegroundColor Red
     exit 1
 }
 Pop-Location
@@ -128,18 +134,20 @@ Copy-Item (Join-Path $API_DIR ".env.example") (Join-Path $RELEASE_DIR "backend\.
 # 复制前端 exe（尝试 productName，回退到 Cargo name）
 Write-Host "      复制前端文件 ..."
 $tauriRelease = Join-Path $UI_DIR "src-tauri\target\release"
-$exeName = "课狐ClassFox.exe"
+$exeName = "$APP_NAME.exe"
 $exePath = Join-Path $tauriRelease $exeName
 $exePathAlt = Join-Path $tauriRelease "app-ui.exe"
 
 if (Test-Path $exePath) {
     Copy-Item $exePath (Join-Path $RELEASE_DIR $RELEASE_EXE_NAME) -Force
-} elseif (Test-Path $exePathAlt) {
+}
+elseif (Test-Path $exePathAlt) {
     Copy-Item $exePathAlt (Join-Path $RELEASE_DIR $RELEASE_EXE_NAME) -Force
-} else {
-    Write-Host "[错误] 找不到前端 exe！" -ForegroundColor Red
-    Write-Host "       已查找: $exePath" -ForegroundColor Red
-    Write-Host "       已查找: $exePathAlt" -ForegroundColor Red
+}
+else {
+    Write-Host "[error] frontend exe not found" -ForegroundColor Red
+    Write-Host "       checked: $exePath" -ForegroundColor Red
+    Write-Host "       checked: $exePathAlt" -ForegroundColor Red
     exit 1
 }
 
@@ -148,6 +156,12 @@ Write-Host "      复制数据文件 ..."
 $kw = Join-Path $ROOT "data\keywords.txt"
 if (Test-Path $kw) {
     Copy-Item $kw (Join-Path $RELEASE_DIR "data\keywords.txt") -Force
+}
+
+# 复制端口示例文档
+$portExamples = Join-Path $ROOT "docs\ports-examples.md"
+if (Test-Path $portExamples) {
+    Copy-Item $portExamples (Join-Path $RELEASE_DIR "ports-examples.md") -Force
 }
 
 Write-Host "      发布目录组装完成" -ForegroundColor Green
@@ -185,19 +199,22 @@ try {
         try {
             $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$testPort/api/health" -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
-                Write-Host "      [通过] 后端健康检查 OK（启动耗时约 ${second}s）" -ForegroundColor Green
+                Write-Host "      [ok] backend health check passed (~${second}s)" -ForegroundColor Green
                 $testOk = $true
                 break
             }
-        } catch {
+        }
+        catch {
             if ($second -eq $startupDeadlineSec) {
-                Write-Host "      [失败] $startupDeadlineSec 秒内无法连接后端: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "      [fail] could not reach backend within $startupDeadlineSec seconds: $($_.Exception.Message)" -ForegroundColor Red
             }
         }
     }
-} catch {
-    Write-Host "      [失败] 启动后端失败: $($_.Exception.Message)" -ForegroundColor Red
-} finally {
+}
+catch {
+    Write-Host "      [fail] backend start failed: $($_.Exception.Message)" -ForegroundColor Red
+}
+finally {
     if ($proc -and !$proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
     if ($null -ne $releaseEnvBackup) {
         [IO.File]::WriteAllText($testEnv, $releaseEnvBackup)
@@ -206,8 +223,8 @@ try {
 
 if (-not $testOk) {
     Write-Host ""
-    Write-Host "      后端验证失败，请检查问题后重新打包！" -ForegroundColor Red
-    Write-Host "      release 目录已保留用于调试：$RELEASE_DIR" -ForegroundColor Yellow
+    Write-Host "      backend validation failed; inspect the issue and re-run packaging" -ForegroundColor Red
+    Write-Host "      release directory kept for debugging: $RELEASE_DIR" -ForegroundColor Yellow
     exit 1
 }
 
@@ -223,15 +240,15 @@ Compress-Archive -Path "$RELEASE_DIR\*" -DestinationPath $zipPath -Force
 
 $zipSizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
 
-Write-Host "      压缩完成" -ForegroundColor Green
+Write-Host "      zip created" -ForegroundColor Green
 
 # ================================================
 # 完成
 # ================================================
 Write-Host ""
 Write-Host "======================================" -ForegroundColor Green
-Write-Host "  打包完成！" -ForegroundColor Green
-Write-Host "  版本:  $Version" -ForegroundColor Green
-Write-Host "  输出:  $DIST_NAME.zip ($zipSizeMB MB)" -ForegroundColor Green
-Write-Host "  目录:  release\" -ForegroundColor Green
+Write-Host "  packaging complete" -ForegroundColor Green
+Write-Host "  version: $Version" -ForegroundColor Green
+Write-Host "  output:  $DIST_NAME.zip ($zipSizeMB MB)" -ForegroundColor Green
+Write-Host "  folder:  release\\" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Green

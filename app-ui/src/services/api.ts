@@ -5,7 +5,7 @@
  */
 
 // 后端地址（开发环境）
-const API_BASE = "http://127.0.0.1:8765/api";
+export const API_BASE = "http://127.0.0.1:8765/api";
 
 /**
  * 上传 PPT 文件到后端进行解析
@@ -46,12 +46,19 @@ export interface StopMonitorResponse {
   summary_error?: string;
 }
 
+export interface StartMonitorResponse {
+  status: string;
+  message: string;
+  effective_asr_mode?: string;
+  webspeech_lang?: string;
+}
+
 /**
  * 启动摸鱼监控模式
  */
 export async function startMonitor(
   payload: StartMonitorPayload
-): Promise<{ status: string; message: string }> {
+): Promise<StartMonitorResponse> {
   const res = await fetch(`${API_BASE}/start_monitor`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -251,6 +258,32 @@ export async function getSettings(): Promise<{
   const res = await fetch(`${API_BASE}/settings`);
   if (!res.ok) throw new Error("读取设置失败");
   return res.json();
+}
+
+export async function ingestAsrText(payload: {
+  text: string;
+  is_final?: boolean;
+}): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/ingest_asr_text`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: payload.text,
+      is_final: payload.is_final ?? true,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.detail || "注入语音文本失败");
+  }
+
+  const data = await res.json();
+  if (data.status && data.status !== "success") {
+    throw new Error(data.message || "注入语音文本失败");
+  }
+
+  return data;
 }
 
 export async function saveSettings(content: string): Promise<{

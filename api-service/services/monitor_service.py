@@ -10,14 +10,16 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 from datetime import datetime
 from typing import List, Set
 
 from fastapi import WebSocket
+from dotenv import load_dotenv
 
 from config import DATA_DIR
-from services.asr_service import create_asr, BaseASR, LocalASR, WindowsBuiltInASR
+from services.asr_service import BrowserSpeechASR, create_asr, BaseASR, LocalASR, WindowsBuiltInASR
 from services.llm_service import LLMService
 from services.transcript_service import TranscriptService
 
@@ -238,6 +240,12 @@ class MonitorService:
         }
 
     def _create_and_start_asr(self):
+        if getattr(sys, "frozen", False):
+            dotenv_path = os.path.join(os.path.dirname(sys.executable), ".env")
+        else:
+            dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+        load_dotenv(dotenv_path, override=True)
+
         mode = os.getenv("ASR_MODE", "local").strip().lower()
         logger.info("[Monitor] creating ASR instance, mode=%s", mode)
 
@@ -586,3 +594,17 @@ class MonitorService:
             asyncio.run_coroutine_threadsafe(
                 self._broadcast_alert(alert), self._loop
             )
+
+    def ingest_external_text(self, text: str, is_final: bool = True):
+        """由前端或其他外部输入注入 ASR 文本。"""
+        if not self.is_monitoring:
+            return {"status": "not_running", "message": "监控服务未在运行"}
+
+        if self.is_paused:
+            return {"status": "paused", "message": "监控已暂停，文本未接收"}
+
+        if not isinstance(self._asr, BrowserSpeechASR):
+            return {"status": "mode_mismatch", "message": "当前 ASR 模式不支持外部文本注入"}
+
+        self._on_asr_text(text, is_final)
+        return {"status": "success", "message": "浏览器语音文本已接收"}

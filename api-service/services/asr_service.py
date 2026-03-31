@@ -1,21 +1,25 @@
 """
 ASR 语音识别服务
 ================
-支持四种模式：
-  - local:     免费语音识别（Google Speech API，无需密钥，需联网）
-    - windows:   Windows 内置语音识别（WinRT SpeechRecognizer，本地离线/系统能力）
-  - mock:      空实现，用于开发测试
-  - dashscope: 阿里云百炼 Fun-ASR 实时语音识别
-  - seed-asr:  字节跳动 Seed-ASR 大模型语音识别
+支持五种模式：
+    - local:     免费语音识别（Google Speech API，无需密钥，需联网）
+    - windows:   旧版 Python WinRT 实现，保留兼容，不建议继续使用
+    - winasr:    基于 C# + WinRT 原生 API 的桌面控制台桥接实现
+    - mock:      空实现，用于开发测试
+    - dashscope: 阿里云百炼 Fun-ASR 实时语音识别
+    - seed-asr:  字节跳动 Seed-ASR 大模型语音识别
 """
 
 import gzip
+import importlib.util
 import json
 import logging
 import os
 import struct
 import threading
 import uuid
+import sys
+from pathlib import Path
 from json import JSONDecodeError
 from typing import Callable, Optional
 
@@ -383,6 +387,59 @@ class WindowsBuiltInASR(BaseASR):
             self._thread.join(timeout=5)
         self._ready_event.clear()
         logger.info("[WindowsBuiltInASR] stopped")
+
+
+# =====================================================================
+# C# WinRT 桥接实现
+# =====================================================================
+
+def _load_winasr_bridge_module():
+    module_name = "_classassistant_winasr_service"
+    cached_module = sys.modules.get(module_name)
+    if cached_module is not None:
+        return cached_module
+
+    bridge_path = Path(__file__).resolve().parents[2] / "winasr" / "winasr_service.py"
+    if not bridge_path.exists():
+        raise RuntimeError(f"winasr bridge file not found: {bridge_path}")
+
+    spec = importlib.util.spec_from_file_location(module_name, bridge_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load winasr bridge module: {bridge_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class WinAsrBridgeASR(BaseASR):
+    """通过 `winasr/` 目录下的 C# WinRT 控制台程序识别语音。"""
+
+    def __init__(self, on_text: Callable[[str, bool], None], language: str | None = None):
+        super().__init__(on_text)
+        self.language = (language or os.getenv("WINASR_LANGUAGE", "")).strip() or None
+        self._impl = None
+
+    def start(self):
+        bridge_module = _load_winasr_bridge_module()
+        create_service = getattr(bridge_module, "create_service", None)
+        if not callable(create_service):
+            raise RuntimeError("winasr_service.py does not expose create_service()")
+
+        self._running = True
+        self._impl = create_service(on_text=self.on_text, language=self.language)
+        self._impl.start()
+        logger.info("[WinAsrBridgeASR] started")
+
+    def stop(self):
+        self._running = False
+        if self._impl is not None:
+            try:
+                self._impl.stop()
+            finally:
+                self._impl = None
+        logger.info("[WinAsrBridgeASR] stopped")
 
 
 # =====================================================================
@@ -805,6 +862,28 @@ class SeedASR(BaseASR):
 
 
 # =====================================================================
+# 浏览器 Web Speech 识别占位实现
+# =====================================================================
+
+class BrowserSpeechASR(BaseASR):
+    """
+    浏览器端 Web Speech 识别占位实现。
+
+    说明：
+    - 该模式本身不采集音频，只是让监控服务保持启用状态。
+    - 真正的识别文本由前端通过 /ingest_asr_text 注入。
+    """
+
+    def start(self):
+        self._running = True
+        logger.info("[BrowserSpeechASR] started (frontend will inject text)")
+
+    def stop(self):
+        self._running = False
+        logger.info("[BrowserSpeechASR] stopped")
+
+
+# =====================================================================
 # 工厂函数
 # =====================================================================
 
@@ -825,6 +904,10 @@ def create_asr(on_text: Callable[[str, bool], None], asr_model: str | None = Non
         return LocalASR(on_text)
     elif mode == "windows":
         return WindowsBuiltInASR(on_text)
+    elif mode == "winasr":
+        return WinAsrBridgeASR(on_text)
+    elif mode in {"webspeech", "edge-webspeech", "browser"}:
+        return BrowserSpeechASR(on_text)
     elif mode == "dashscope":
         return DashScopeASR(on_text, model_name=asr_model)
     elif mode == "seed-asr":
