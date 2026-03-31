@@ -1,21 +1,25 @@
 """
 ASR 语音识别服务
 ================
-支持四种模式：
-  - local:     免费语音识别（Google Speech API，无需密钥，需联网）
-    - windows:   Windows 内置语音识别（WinRT SpeechRecognizer，本地离线/系统能力）
-  - mock:      空实现，用于开发测试
-  - dashscope: 阿里云百炼 Fun-ASR 实时语音识别
-  - seed-asr:  字节跳动 Seed-ASR 大模型语音识别
+支持五种模式：
+    - local:     免费语音识别（Google Speech API，无需密钥，需联网）
+    - windows:   旧版 Python WinRT 实现，保留兼容，不建议继续使用
+    - winasr:    基于 C# + WinRT 原生 API 的桌面控制台桥接实现
+    - mock:      空实现，用于开发测试
+    - dashscope: 阿里云百炼 Fun-ASR 实时语音识别
+    - seed-asr:  字节跳动 Seed-ASR 大模型语音识别
 """
 
 import gzip
+import importlib.util
 import json
 import logging
 import os
 import struct
 import threading
 import uuid
+import sys
+from pathlib import Path
 from json import JSONDecodeError
 from typing import Callable, Optional
 
@@ -171,16 +175,101 @@ class WindowsBuiltInASR(BaseASR):
         super().__init__(on_text)
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._ready_event = threading.Event()
+        self._start_error: str | None = None
+
+    @staticmethod
+    def _diagnose_start_failure(exc: Exception) -> str:
+        raw = str(exc).strip() or exc.__class__.__name__
+        lowered = raw.lower()
+
+        hints = [
+            "请确认系统“设置 > 隐私和安全性 > 麦克风”已允许应用访问麦克风",
+            "请确认系统已安装语音识别能力与中文语音包",
+            "请确认没有其他应用独占麦克风设备",
+        ]
+
+        if "access is denied" in lowered or "0x80070005" in lowered:
+            hints.insert(0, "检测到权限拒绝，通常是麦克风隐私权限未开启")
+        elif "class not registered" in lowered or "0x80040154" in lowered:
+            hints.insert(0, "检测到 WinRT 组件不可用，请检查 Windows 语音组件安装")
+        elif "0x80045509" in lowered:
+            hints.insert(0, "检测到语音识别策略限制，请先在 Windows 中启用在线语音识别")
+
+        return f"WindowsBuiltInASR recognition failed: {raw}. {'；'.join(hints)}"
+
+    @staticmethod
+    def _bind_session_event(session, event_name: str, handler):
+        """兼容不同 winsdk 投影的事件绑定方式。"""
+        candidate_names = [
+            event_name,
+            event_name.replace("_", ""),
+            "".join(part.capitalize() if idx else part for idx, part in enumerate(event_name.split("_"))),
+        ]
+
+        for name in candidate_names:
+            if hasattr(session, name):
+                event_obj = getattr(session, name)
+                event_obj += handler
+                return ("attr", name, handler)
+
+            add_name = f"add_{name}"
+            if hasattr(session, add_name):
+                token = getattr(session, add_name)(handler)
+                return ("add", name, token)
+
+        raise AttributeError(
+            f"'{type(session).__name__}' has no compatible event for '{event_name}'"
+        )
+
+    @staticmethod
+    def _unbind_session_event(session, binding):
+        if not binding:
+            return
+
+        bind_type, event_name, token_or_handler = binding
+        if bind_type == "attr" and hasattr(session, event_name):
+            event_obj = getattr(session, event_name)
+            event_obj -= token_or_handler
+            return
+
+        if bind_type == "add":
+            remove_name = f"remove_{event_name}"
+            if hasattr(session, remove_name):
+                getattr(session, remove_name)(token_or_handler)
 
     def start(self):
+        if os.name != "nt":
+            raise RuntimeError("WindowsBuiltInASR only available on Windows")
+
+        # 预检依赖，避免外层返回已启动但内部立刻失败。
+        try:
+            from winsdk.windows.media.speechrecognition import SpeechRecognizer  # noqa: F401
+        except Exception as exc:
+            raise RuntimeError(f"winsdk import failed: {exc}") from exc
+
         self._running = True
         self._stop_event.clear()
+        self._ready_event.clear()
+        self._start_error = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+
+        if not self._ready_event.wait(timeout=5):
+            self.stop()
+            raise RuntimeError("WindowsBuiltInASR start timeout")
+
+        if self._start_error:
+            err = self._start_error
+            self.stop()
+            raise RuntimeError(err)
+
         logger.info("[WindowsBuiltInASR] started")
 
     def _run(self):
         if os.name != "nt":
+            self._start_error = "WindowsBuiltInASR only available on Windows"
+            self._ready_event.set()
             logger.error("[WindowsBuiltInASR] only available on Windows")
             return
 
@@ -188,6 +277,9 @@ class WindowsBuiltInASR(BaseASR):
             import asyncio
             asyncio.run(self._run_async())
         except Exception:
+            if not self._ready_event.is_set():
+                self._start_error = "WindowsBuiltInASR run loop failed"
+                self._ready_event.set()
             logger.exception("[WindowsBuiltInASR] run loop failed")
 
     async def _run_async(self):
@@ -197,13 +289,16 @@ class WindowsBuiltInASR(BaseASR):
                 SpeechRecognitionScenario,
                 SpeechRecognitionTopicConstraint,
             )
-        except Exception:
+        except Exception as exc:
+            self._start_error = f"winsdk import failed: {exc}"
+            self._ready_event.set()
             logger.exception(
                 "[WindowsBuiltInASR] failed to import winsdk. Please install dependency: winsdk"
             )
             return
 
         recognizer = None
+        result_binding = None
         try:
             recognizer = SpeechRecognizer()
 
@@ -219,12 +314,30 @@ class WindowsBuiltInASR(BaseASR):
                 logger.exception("[WindowsBuiltInASR] failed to add dictation constraint")
 
             compile_result = await recognizer.compile_constraints_async()
-            compile_status = str(getattr(compile_result, "status", "unknown"))
-            if "success" not in compile_status.lower():
-                logger.warning(
-                    "[WindowsBuiltInASR] compile constraints status: %s",
-                    compile_status,
-                )
+            compile_status_obj = getattr(compile_result, "status", None)
+
+            compile_status_name = "unknown"
+            if compile_status_obj is not None:
+                compile_status_name = getattr(compile_status_obj, "name", None) or str(compile_status_obj)
+
+            is_compile_success = False
+            if compile_status_obj is not None:
+                try:
+                    # WinRT SpeechRecognitionResultStatus.Success 枚举值通常为 0。
+                    is_compile_success = int(compile_status_obj) == 0
+                except Exception:
+                    is_compile_success = False
+
+            if not is_compile_success:
+                status_lower = compile_status_name.lower()
+                is_compile_success = status_lower in {"success", "speechrecognitionresultstatus.success"}
+
+            if not is_compile_success:
+                msg = f"compile constraints failed, status={compile_status_name}"
+                self._start_error = msg
+                self._ready_event.set()
+                logger.error("[WindowsBuiltInASR] %s", msg)
+                return
 
             session = recognizer.continuous_recognition_session
 
@@ -240,9 +353,11 @@ class WindowsBuiltInASR(BaseASR):
                 except Exception:
                     logger.exception("[WindowsBuiltInASR] result callback failed")
 
-            session.result_generated += _on_result_generated
+            result_binding = self._bind_session_event(session, "result_generated", _on_result_generated)
+            logger.info("[WindowsBuiltInASR] starting continuous recognition session...")
             await session.start_async()
             logger.info("[WindowsBuiltInASR] continuous recognition running")
+            self._ready_event.set()
 
             while not self._stop_event.is_set():
                 await asyncio.sleep(0.2)
@@ -251,9 +366,18 @@ class WindowsBuiltInASR(BaseASR):
                 await session.stop_async()
             except Exception:
                 logger.exception("[WindowsBuiltInASR] failed to stop continuous session")
-        except Exception:
+        except Exception as exc:
+            if not self._ready_event.is_set():
+                self._start_error = self._diagnose_start_failure(exc)
+                self._ready_event.set()
             logger.exception("[WindowsBuiltInASR] recognition failed")
         finally:
+            try:
+                if recognizer is not None:
+                    session = recognizer.continuous_recognition_session
+                    self._unbind_session_event(session, result_binding)
+            except Exception:
+                logger.exception("[WindowsBuiltInASR] failed to unbind result callback")
             recognizer = None
 
     def stop(self):
@@ -261,7 +385,61 @@ class WindowsBuiltInASR(BaseASR):
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)
+        self._ready_event.clear()
         logger.info("[WindowsBuiltInASR] stopped")
+
+
+# =====================================================================
+# C# WinRT 桥接实现
+# =====================================================================
+
+def _load_winasr_bridge_module():
+    module_name = "_classassistant_winasr_service"
+    cached_module = sys.modules.get(module_name)
+    if cached_module is not None:
+        return cached_module
+
+    bridge_path = Path(__file__).resolve().parents[2] / "winasr" / "winasr_service.py"
+    if not bridge_path.exists():
+        raise RuntimeError(f"winasr bridge file not found: {bridge_path}")
+
+    spec = importlib.util.spec_from_file_location(module_name, bridge_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load winasr bridge module: {bridge_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class WinAsrBridgeASR(BaseASR):
+    """通过 `winasr/` 目录下的 C# WinRT 控制台程序识别语音。"""
+
+    def __init__(self, on_text: Callable[[str, bool], None], language: str | None = None):
+        super().__init__(on_text)
+        self.language = (language or os.getenv("WINASR_LANGUAGE", "")).strip() or None
+        self._impl = None
+
+    def start(self):
+        bridge_module = _load_winasr_bridge_module()
+        create_service = getattr(bridge_module, "create_service", None)
+        if not callable(create_service):
+            raise RuntimeError("winasr_service.py does not expose create_service()")
+
+        self._running = True
+        self._impl = create_service(on_text=self.on_text, language=self.language)
+        self._impl.start()
+        logger.info("[WinAsrBridgeASR] started")
+
+    def stop(self):
+        self._running = False
+        if self._impl is not None:
+            try:
+                self._impl.stop()
+            finally:
+                self._impl = None
+        logger.info("[WinAsrBridgeASR] stopped")
 
 
 # =====================================================================
@@ -684,6 +862,28 @@ class SeedASR(BaseASR):
 
 
 # =====================================================================
+# 浏览器 Web Speech 识别占位实现
+# =====================================================================
+
+class BrowserSpeechASR(BaseASR):
+    """
+    浏览器端 Web Speech 识别占位实现。
+
+    说明：
+    - 该模式本身不采集音频，只是让监控服务保持启用状态。
+    - 真正的识别文本由前端通过 /ingest_asr_text 注入。
+    """
+
+    def start(self):
+        self._running = True
+        logger.info("[BrowserSpeechASR] started (frontend will inject text)")
+
+    def stop(self):
+        self._running = False
+        logger.info("[BrowserSpeechASR] stopped")
+
+
+# =====================================================================
 # 工厂函数
 # =====================================================================
 
@@ -699,10 +899,15 @@ def create_asr(on_text: Callable[[str, bool], None], asr_model: str | None = Non
         BaseASR 子类实例
     """
     mode = os.getenv("ASR_MODE", "local").lower()
+    logger.info("[ASR] mode=%s, dashscope_model=%s", mode, (asr_model or "").strip() or "(env/default)")
     if mode == "local":
         return LocalASR(on_text)
     elif mode == "windows":
         return WindowsBuiltInASR(on_text)
+    elif mode == "winasr":
+        return WinAsrBridgeASR(on_text)
+    elif mode in {"webspeech", "edge-webspeech", "browser"}:
+        return BrowserSpeechASR(on_text)
     elif mode == "dashscope":
         return DashScopeASR(on_text, model_name=asr_model)
     elif mode == "seed-asr":

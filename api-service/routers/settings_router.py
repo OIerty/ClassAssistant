@@ -8,6 +8,7 @@ import os
 import sys
 
 from fastapi import APIRouter, HTTPException
+from dotenv import load_dotenv
 from pydantic import BaseModel
 
 
@@ -40,6 +41,8 @@ async def update_settings(request: SettingsUpdateRequest):
     try:
         with open(ENV_PATH, "w", encoding="utf-8") as f:
             f.write(request.content.rstrip() + "\n")
-        return {"status": "success", "message": "设置已保存，重启后端后生效。"}
+
+        load_dotenv(ENV_PATH, override=True)
+        return {"status": "success", "message": "设置已保存并已同步到当前进程。"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"保存设置失败: {exc}")

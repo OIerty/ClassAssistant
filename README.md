@@ -173,6 +173,7 @@ npm run tauri dev
 | ------ | ------ |
 | local | 基于 SpeechRecognition + Google Speech API，按句回调，适合直接体验 |
 | windows | Windows 内置语音识别（WinRT SpeechRecognizer），优先使用本机能力 |
+| winasr | C# + WinRT 原生控制台桥接，适合 Windows 桌面环境 |
 | mock | 不录音、不识别，适合纯 UI 联调 |
 | dashscope | 阿里云百炼 Fun-ASR |
 | seed-asr | 字节 Seed-ASR，使用 utterances + definite 分句，避免流式累积文本反复写盘 |

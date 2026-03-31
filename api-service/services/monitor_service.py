@@ -10,14 +10,16 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 from datetime import datetime
 from typing import List, Set
 
 from fastapi import WebSocket
+from dotenv import load_dotenv
 
 from config import DATA_DIR
-from services.asr_service import create_asr, BaseASR, LocalASR, WindowsBuiltInASR
+from services.asr_service import BrowserSpeechASR, create_asr, BaseASR, LocalASR, WindowsBuiltInASR
 from services.llm_service import LLMService
 from services.transcript_service import TranscriptService
 
@@ -238,10 +240,28 @@ class MonitorService:
         }
 
     def _create_and_start_asr(self):
+        if getattr(sys, "frozen", False):
+            dotenv_path = os.path.join(os.path.dirname(sys.executable), ".env")
+        else:
+            dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+        load_dotenv(dotenv_path, override=True)
+
+        mode = os.getenv("ASR_MODE", "local").strip().lower()
+        logger.info("[Monitor] creating ASR instance, mode=%s", mode)
+
         self._asr = create_asr(on_text=self._on_asr_text, asr_model=self._asr_model or None)
+        logger.info("[Monitor] ASR instance created: %s", type(self._asr).__name__)
+
         if isinstance(self._asr, (LocalASR, WindowsBuiltInASR)):
             self._asr.on_text = self._on_local_asr_text
-        self._asr.start()
+
+        try:
+            self._asr.start()
+            logger.info("[Monitor] ASR started: %s", type(self._asr).__name__)
+        except Exception as exc:
+            logger.exception("[Monitor] ASR start failed: %s", exc)
+            self._asr = None
+            raise RuntimeError(f"ASR 启动失败: {exc}") from exc
 
     async def start(self, course_name: str = "", material_name: str = "", asr_model: str = "") -> dict:
         """启动监控服务"""
@@ -264,7 +284,16 @@ class MonitorService:
 
         # 创建 ASR 实例并启动
         # 本地 ASR 使用独立的回调（每句新建一行），线上 ASR 使用流式回调
-        self._create_and_start_asr()
+        try:
+            self._create_and_start_asr()
+        except Exception as exc:
+            self.is_monitoring = False
+            self.is_paused = False
+            self._loop = None
+            return {
+                "status": "error",
+                "message": str(exc),
+            }
 
         return {"status": "started", "message": "开始摸鱼模式 🎣 录音和监控已启动"}
 
@@ -565,3 +594,17 @@ class MonitorService:
             asyncio.run_coroutine_threadsafe(
                 self._broadcast_alert(alert), self._loop
             )
+
+    def ingest_external_text(self, text: str, is_final: bool = True):
+        """由前端或其他外部输入注入 ASR 文本。"""
+        if not self.is_monitoring:
+            return {"status": "not_running", "message": "监控服务未在运行"}
+
+        if self.is_paused:
+            return {"status": "paused", "message": "监控已暂停，文本未接收"}
+
+        if not isinstance(self._asr, BrowserSpeechASR):
+            return {"status": "mode_mismatch", "message": "当前 ASR 模式不支持外部文本注入"}
+
+        self._on_asr_text(text, is_final)
+        return {"status": "success", "message": "浏览器语音文本已接收"}
