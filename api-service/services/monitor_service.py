@@ -249,7 +249,6 @@ class MonitorService:
             return {"status": "not_running", "message": "监控服务未在运行"}
 
         # 增加防御性检查：确保当前 ASR 实例确实是 BrowserSpeechASR，避免在其他模式下产生重复转录
-        from services.asr_service import BrowserSpeechASR
         if not isinstance(self._asr, BrowserSpeechASR):
             return {"status": "error", "message": "当前 ASR 模式不支持外部文本注入"}
 
