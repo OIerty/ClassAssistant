@@ -22,7 +22,6 @@ import {
   resumeMonitor,
   stopMonitor,
   stopMonitorWithSummary,
-  getAsrConfig,
 } from "./services/api";
 import { applyUiStyleSettings, readUiStyleSettings } from "./services/preferences";
 import { createBrowserAsrSession, type BrowserAsrSession } from "./services/browserAsr";
