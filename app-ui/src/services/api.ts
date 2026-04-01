@@ -98,7 +98,11 @@ export async function resumeMonitor(): Promise<{
 }> {
   const res = await fetch(`${API_BASE}/resume_monitor`, { method: "POST" });
   if (!res.ok) throw new Error("继续监控失败");
-  return res.json();
+  const data = await res.json();
+  if (data.status && data.status !== "resumed") {
+    throw new Error(data.message || "继续监控失败");
+  }
+  return data;
 }
 
 export async function stopMonitorWithSummary(): Promise<StopMonitorResponse> {
