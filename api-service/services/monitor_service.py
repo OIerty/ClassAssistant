@@ -383,6 +383,7 @@ class MonitorService:
 
         self.is_monitoring = False
         self.is_paused = False
+        self._ingest_token = ""
 
         # 停止 ASR
         if self._asr:
