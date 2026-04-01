@@ -202,40 +202,6 @@ export function createBrowserAsrSession(
         },
     };
 }
-import { ingestAsrText } from "./api";
-
-type SpeechRecognitionResultLike = {
-    isFinal: boolean;
-    [index: number]: { transcript?: string };
-};
-
-type SpeechRecognitionEventLike = {
-    resultIndex: number;
-    results: Array<SpeechRecognitionResultLike>;
-};
-
-type RecognitionConstructor = new () => {
-    lang: string;
-    continuous: boolean;
-    interimResults: boolean;
-    maxAlternatives: number;
-    start: () => void;
-    stop: () => void;
-    abort: () => void;
-    onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-    onerror: ((event: { error?: string; message?: string }) => void) | null;
-    onend: (() => void) | null;
-};
-
-export interface BrowserAsrSession {
-    start: () => Promise<void>;
-    stop: () => Promise<void>;
-}
-
-export interface BrowserAsrOptions {
-    lang?: string;
-}
-
 const AUTO_RESTART_DELAY_MS = 400;
 
 function getRecognitionConstructor(): RecognitionConstructor | null {
