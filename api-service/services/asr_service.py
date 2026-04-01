@@ -32,6 +32,12 @@ CHANNELS = int(os.getenv("AUDIO_CHANNELS", "1"))
 CHUNK_SIZE = int(os.getenv("AUDIO_CHUNK_SIZE", "3200"))  # 100ms @16kHz, 16bit, mono
 
 
+def normalize_asr_mode(value: str | None) -> str:
+    if value is None:
+        return "local"
+    return value.strip().lower() or "local"
+
+
 class BaseASR:
     """ASR 基类，定义统一接口"""
 
@@ -598,7 +604,7 @@ def create_asr(on_text: Callable[[str, bool], None]) -> BaseASR:
     Returns:
         BaseASR 子类实例
     """
-    mode = os.getenv("ASR_MODE", "local").lower()
+    mode = normalize_asr_mode(os.getenv("ASR_MODE"))
     if mode == "local":
         return LocalASR(on_text)
     elif mode in {"webspeech", "browser", "edge-webspeech"}:

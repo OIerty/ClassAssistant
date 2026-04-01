@@ -243,9 +243,14 @@ class MonitorService:
         if not self.is_monitoring:
             return {"status": "not_running", "message": "监控服务未在运行"}
 
+        if self.is_paused:
+            return {"status": "paused", "message": "监控服务已暂停，无法接收外部文本"}
+
         # 增加防御性检查：确保当前 ASR 实例确实是 BrowserSpeechASR，避免在其他模式下产生重复转录
         if not isinstance(self._asr, BrowserSpeechASR):
-            return {"status": "error", "message": "当前 ASR 模式不支持外部文本注入"}
+            if self._asr is None:
+                return {"status": "error", "message": "当前 ASR 实例不可用，无法接收外部文本"}
+            return {"status": "unsupported_asr_mode", "message": "当前 ASR 模式不支持外部文本注入"}
 
         self._on_asr_text(text, is_final)
         return {"status": "success", "message": "浏览器语音文本已接收"}
