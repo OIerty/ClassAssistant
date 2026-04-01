@@ -96,7 +96,44 @@ function MainApp() {
     await stopBrowserAsrSession();
     const session = createBrowserAsrSession(
       (message) => {
-        addToast(message, message.includes("失败") || message.includes("错误") ? "error" : "info");
+        // 支持结构化回调：优先根据 level/status 判断 toast 类型，回落到字符串包含判断
+        let text: string;
+        let type: ToastMessage["type"] = "info";
+
+        if (typeof message === "string") {
+          text = message;
+          if (message.includes("失败") || message.includes("错误")) {
+            type = "error";
+          }
+        } else if (message && typeof message === "object") {
+          // 兼容可能的结构 { message, level, status, ... }
+          const anyMsg: any = message;
+          text = anyMsg.message ?? "";
+
+          if (anyMsg.level === "error") {
+            type = "error";
+          } else if (anyMsg.level === "success") {
+            type = "success";
+          } else if (anyMsg.level === "warning") {
+            type = "warning";
+          } else if (anyMsg.level === "info") {
+            type = "info";
+          } else if (typeof anyMsg.status === "string") {
+            // 根据 status 粗略判断：非 ok/success 视为错误
+            const status = anyMsg.status.toLowerCase();
+            if (status !== "ok" && status !== "success") {
+              type = "error";
+            }
+          } else if (typeof text === "string" && (text.includes("失败") || text.includes("错误"))) {
+            // 兜底：再退回到字符串包含判断
+            type = "error";
+          }
+        } else {
+          // 非预期类型，直接转为字符串
+          text = String(message);
+        }
+
+        addToast(text, type);
       },
       { lang: activeBrowserAsrLangRef.current }
     );
