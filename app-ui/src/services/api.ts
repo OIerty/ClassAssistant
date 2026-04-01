@@ -110,8 +110,36 @@ export async function ingestAsrText(payload: {
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "浏览器语音文本注入失败");
+    let message = "浏览器语音文本注入失败";
+    try {
+      const errBody = await res.json();
+      const detail = errBody && errBody.detail;
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (detail != null) {
+        if (Array.isArray(detail)) {
+          message = detail
+            .map((item) =>
+              typeof item === "string" ? item : JSON.stringify(item)
+            )
+            .join("; ");
+        } else if (typeof detail === "object") {
+          message = JSON.stringify(detail);
+        } else {
+          message = String(detail);
+        }
+      }
+    } catch {
+      try {
+        const text = await res.text();
+        if (text) {
+          message = text;
+        }
+      } catch {
+        // Ignore additional parsing errors and keep default message
+      }
+    }
+    throw new Error(message);
   }
 
   const data = await res.json();
