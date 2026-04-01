@@ -238,6 +238,23 @@ class MonitorService:
             self._asr.on_text = self._on_local_asr_text
         self._asr.start()
 
+    def get_effective_asr_mode(self) -> str:
+        if isinstance(self._asr, BrowserSpeechASR):
+            return "webspeech"
+        if isinstance(self._asr, LocalASR):
+            return "local"
+        from services.asr_service import DashScopeASR, SeedASR, MockASR
+
+        if isinstance(self._asr, DashScopeASR):
+            return "dashscope"
+        if isinstance(self._asr, SeedASR):
+            return "seed-asr"
+        if isinstance(self._asr, MockASR):
+            return "mock"
+        if self._asr is None:
+            return "mock"
+        return "mock"
+
     def ingest_external_text(self, text: str, is_final: bool = True) -> dict:
         """接收前端浏览器识别文本，并沿用现有 ASR 回调流程。"""
         if not self.is_monitoring:

@@ -135,6 +135,10 @@ export function createBrowserAsrSession(
     };
 
     recognition.onresult = (event) => {
+        if (!isRunning || isManuallyStopped) {
+            return;
+        }
+
         for (let index = event.resultIndex; index < event.results.length; index += 1) {
             const result = event.results[index];
             const transcript = result?.[0]?.transcript?.trim();
