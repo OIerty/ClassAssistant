@@ -252,7 +252,15 @@ class MonitorService:
                 return {"status": "error", "message": "当前 ASR 实例不可用，无法接收外部文本"}
             return {"status": "unsupported_asr_mode", "message": "当前 ASR 模式不支持外部文本注入"}
 
-        self._on_asr_text(text, is_final)
+        # 统一裁剪并校验文本，避免空文本在后续被忽略却返回 success
+        clean_text = (text or "").strip()
+        if not clean_text:
+            return {
+                "status": "empty_text",
+                "message": "空文本已忽略，不会写入转录",
+            }
+
+        self._on_asr_text(clean_text, is_final)
         return {"status": "success", "message": "浏览器语音文本已接收"}
 
     async def start(self, course_name: str = "", material_name: str = "") -> dict:
