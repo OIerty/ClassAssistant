@@ -353,9 +353,10 @@ class MonitorService:
             return {"status": "not_paused", "message": "监控当前未暂停"}
 
         self.is_paused = False
+        self._ingest_token = secrets.token_urlsafe(24)
         self._loop = asyncio.get_running_loop()
         self._create_and_start_asr()
-        return {"status": "resumed", "message": "监控已继续"}
+        return {"status": "resumed", "message": "监控已继续", "asr_session_token": self._ingest_token}
 
     async def stop(self) -> dict:
         """停止监控服务"""

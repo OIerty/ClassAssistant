@@ -187,6 +187,9 @@ function MainApp() {
       if (isPaused) {
         const res = await resumeMonitor();
         try {
+          activeAsrSessionTokenRef.current = res.asr_session_token || "";
+          activeAsrModeRef.current = res.effective_asr_mode || activeAsrModeRef.current;
+          activeBrowserAsrLangRef.current = res.webspeech_lang || activeBrowserAsrLangRef.current;
           if (isBrowserAsrMode(activeAsrModeRef.current)) {
             await startBrowserAsrSession();
           }
@@ -194,9 +197,13 @@ function MainApp() {
           setIsPaused(false);
           addToast(res.message, "success");
         } catch (resumeErr) {
+          await stopBrowserAsrSession().catch(() => {
+            /* ignore cleanup failure */
+          });
           await pauseMonitor().catch(() => {
             /* ignore rollback failure */
           });
+          activeAsrSessionTokenRef.current = "";
           throw resumeErr;
         }
       } else {
@@ -206,6 +213,7 @@ function MainApp() {
         const res = await pauseMonitor();
         disconnect();
         setIsPaused(true);
+        activeAsrSessionTokenRef.current = "";
         addToast(res.message, "info");
       }
     } catch (err) {

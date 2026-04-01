@@ -30,10 +30,11 @@ export interface BrowserAsrSession {
 
 export interface BrowserAsrOptions {
     lang?: string;
-    sessionToken: string;
+    sessionToken?: string;
 }
 
 const AUTO_RESTART_DELAY_MS = 400;
+const DEDUPE_WINDOW_MS = 2000;
 
 function getRecognitionConstructor(): RecognitionConstructor | null {
     const globalWindow = window as Window & {
@@ -53,6 +54,10 @@ export function createBrowserAsrSession(
         throw new Error("当前浏览器/内核不支持 SpeechRecognition / webkitSpeechRecognition");
     }
 
+    if (!options.sessionToken) {
+        throw new Error("浏览器语音会话令牌缺失，无法注入识别结果");
+    }
+
     const recognition = new Recognition();
     recognition.lang = options.lang?.trim() || "zh-CN";
     recognition.continuous = true;
@@ -65,7 +70,9 @@ export function createBrowserAsrSession(
     let pendingInterimTimer: number | null = null;
     let pendingInterimTranscript = "";
     let lastSentFinalTranscript = "";
+    let lastSentFinalAt = 0;
     let lastSentInterimTranscript = "";
+    let lastSentInterimAt = 0;
     let sendQueue: Promise<void> = Promise.resolve();
 
     const clearRestartTimer = () => {
@@ -83,19 +90,26 @@ export function createBrowserAsrSession(
     };
 
     const sendTranscript = (transcript: string, isFinal: boolean) => {
+        const now = Date.now();
         if (isFinal) {
-            if (transcript === lastSentFinalTranscript) {
+            if (transcript === lastSentFinalTranscript && now - lastSentFinalAt < DEDUPE_WINDOW_MS) {
                 return;
             }
 
             lastSentFinalTranscript = transcript;
+            lastSentFinalAt = now;
             lastSentInterimTranscript = "";
+            lastSentInterimAt = 0;
         } else {
-            if (transcript === lastSentInterimTranscript || transcript === lastSentFinalTranscript) {
+            if (
+                (transcript === lastSentInterimTranscript && now - lastSentInterimAt < DEDUPE_WINDOW_MS) ||
+                (transcript === lastSentFinalTranscript && now - lastSentFinalAt < DEDUPE_WINDOW_MS)
+            ) {
                 return;
             }
 
             lastSentInterimTranscript = transcript;
+            lastSentInterimAt = now;
         }
 
         sendQueue = sendQueue

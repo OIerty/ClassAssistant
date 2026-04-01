@@ -105,7 +105,11 @@ async def pause_monitor():
 
 @router.post("/resume_monitor")
 async def resume_monitor():
-    return await monitor_service.resume()
+    result = await monitor_service.resume()
+    if result.get("status") == "resumed":
+        result["effective_asr_mode"] = monitor_service.get_effective_asr_mode()
+        result["webspeech_lang"] = os.getenv("WEBSPEECH_LANG", "zh-CN").strip() or "zh-CN"
+    return result
 
 
 @router.post("/ingest_asr_text")

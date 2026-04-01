@@ -89,7 +89,13 @@ export async function pauseMonitor(): Promise<{ status: string; message: string 
   return res.json();
 }
 
-export async function resumeMonitor(): Promise<{ status: string; message: string }> {
+export async function resumeMonitor(): Promise<{
+  status: string;
+  message: string;
+  asr_session_token?: string;
+  effective_asr_mode?: string;
+  webspeech_lang?: string;
+}> {
   const res = await fetch(`${API_BASE}/resume_monitor`, { method: "POST" });
   if (!res.ok) throw new Error("继续监控失败");
   return res.json();
