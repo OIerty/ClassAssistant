@@ -195,10 +195,10 @@ function MainApp() {
           throw resumeErr;
         }
       } else {
-        const res = await pauseMonitor();
         if (isBrowserAsrMode(activeAsrModeRef.current)) {
           await stopBrowserAsrSession();
         }
+        const res = await pauseMonitor();
         disconnect();
         setIsPaused(true);
         addToast(res.message, "info");
