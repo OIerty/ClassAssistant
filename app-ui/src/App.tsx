@@ -229,7 +229,7 @@ function MainApp() {
           await stopBrowserAsrSession().catch(() => {
             /* ignore cleanup failure */
           });
-          await stopMonitor().catch(() => {
+          await stopMonitor({ withSummary: false }).catch(() => {
             /* ignore rollback failure */
           });
           disconnect();

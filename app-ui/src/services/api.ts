@@ -75,8 +75,9 @@ export async function startMonitor(
 /**
  * 停止监控
  */
-export async function stopMonitor(): Promise<{ status: string; message: string }> {
-  const res = await fetch(`${API_BASE}/stop_monitor`, { method: "POST" });
+export async function stopMonitor(options: { withSummary?: boolean } = {}): Promise<StopMonitorResponse> {
+  const query = options.withSummary === false ? "?with_summary=false" : "";
+  const res = await fetch(`${API_BASE}/stop_monitor${query}`, { method: "POST" });
   if (!res.ok) throw new Error("停止监控失败");
   return res.json();
 }
@@ -94,9 +95,7 @@ export async function resumeMonitor(): Promise<{ status: string; message: string
 }
 
 export async function stopMonitorWithSummary(): Promise<StopMonitorResponse> {
-  const res = await fetch(`${API_BASE}/stop_monitor`, { method: "POST" });
-  if (!res.ok) throw new Error("停止监控失败");
-  return res.json();
+  return stopMonitor({ withSummary: true });
 }
 
 export async function ingestAsrText(payload: {

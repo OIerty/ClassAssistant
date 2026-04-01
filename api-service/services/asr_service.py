@@ -17,10 +17,14 @@ import struct
 import threading
 import uuid
 from json import JSONDecodeError
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-import pyaudio
 from dotenv import load_dotenv
+
+try:
+    import pyaudio
+except ImportError:  # pragma: no cover - optional dependency in browser-only mode
+    pyaudio = None
 
 load_dotenv()
 
@@ -36,6 +40,11 @@ def normalize_asr_mode(value: str | None) -> str:
     if value is None:
         return "local"
     return value.strip().lower() or "local"
+
+
+def _require_pyaudio(mode_name: str):
+    if pyaudio is None:
+        raise RuntimeError(f"{mode_name} 需要 PyAudio，但当前环境未安装 pyaudio")
 
 
 class BaseASR:
@@ -101,6 +110,7 @@ class LocalASR(BaseASR):
         self._stop_event = threading.Event()
 
     def start(self):
+        _require_pyaudio("LocalASR")
         self._running = True
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -185,12 +195,13 @@ class DashScopeASR(BaseASR):
     def __init__(self, on_text: Callable[[str, bool], None]):
         super().__init__(on_text)
         self._recognition = None
-        self._mic: Optional[pyaudio.PyAudio] = None
+        self._mic: Optional[Any] = None
         self._stream = None
         self._send_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
     def start(self):
+        _require_pyaudio("DashScopeASR")
         import dashscope
         from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
 
@@ -307,7 +318,7 @@ class SeedASR(BaseASR):
     def __init__(self, on_text: Callable[[str, bool], None]):
         super().__init__(on_text)
         self._ws = None
-        self._mic: Optional[pyaudio.PyAudio] = None
+        self._mic: Optional[Any] = None
         self._stream = None
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -401,6 +412,7 @@ class SeedASR(BaseASR):
             return None
 
     def start(self):
+        _require_pyaudio("SeedASR")
         self._running = True
         self._stop_event.clear()
         self._seen_utterances.clear()

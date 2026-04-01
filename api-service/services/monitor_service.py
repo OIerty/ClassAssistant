@@ -263,19 +263,31 @@ class MonitorService:
         self.is_monitoring = True
         self.is_paused = False
 
-        # 保存当前事件循环引用，供 ASR 回调使用
-        self._loop = asyncio.get_running_loop()
+        try:
+            # 保存当前事件循环引用，供 ASR 回调使用
+            self._loop = asyncio.get_running_loop()
 
-        # 重新加载关键词文件
-        self._load_keywords()
-        self._course_name = course_name.strip()
-        self._active_material_name = material_name.strip()
-        self._reset_session_state()
-        self._flush_transcript_file()
+            # 重新加载关键词文件
+            self._load_keywords()
+            self._course_name = course_name.strip()
+            self._active_material_name = material_name.strip()
+            self._reset_session_state()
+            self._flush_transcript_file()
 
-        # 创建 ASR 实例并启动
-        # 本地 ASR 使用独立的回调（每句新建一行），线上 ASR 使用流式回调
-        self._create_and_start_asr()
+            # 创建 ASR 实例并启动
+            # 本地 ASR 使用独立的回调（每句新建一行），线上 ASR 使用流式回调
+            self._create_and_start_asr()
+        except Exception as exc:
+            self.is_monitoring = False
+            self.is_paused = False
+            if self._asr:
+                try:
+                    self._asr.stop()
+                except Exception:
+                    pass
+                self._asr = None
+            self._loop = None
+            return {"status": "error", "message": str(exc)}
 
         return {"status": "started", "message": "开始摸鱼模式 🎣 录音和监控已启动"}
 

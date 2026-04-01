@@ -68,7 +68,7 @@ async def get_cite_files():
 
 
 @router.post("/stop_monitor")
-async def stop_monitor():
+async def stop_monitor(with_summary: bool = True):
     """
     停止监控
     - 停止录音
@@ -76,6 +76,9 @@ async def stop_monitor():
     """
     result = await monitor_service.stop()
     if result.get("status") != "stopped":
+        return result
+
+    if not with_summary:
         return result
 
     try:
