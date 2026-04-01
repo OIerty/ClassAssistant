@@ -122,6 +122,10 @@ export function createBrowserAsrSession(
             )
             .then(() => undefined)
             .catch((error) => {
+                // Avoid reporting errors after the session has been stopped.
+                if (!isRunning || isManuallyStopped) {
+                    return;
+                }
                 onStatus?.(error instanceof Error ? error.message : "浏览器语音文本注入失败");
             });
     };
