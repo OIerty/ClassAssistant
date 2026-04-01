@@ -61,12 +61,61 @@ export function createBrowserAsrSession(
     let isRunning = false;
     let isManuallyStopped = false;
     let restartTimer: number | null = null;
+    let pendingInterimTimer: number | null = null;
+    let pendingInterimTranscript = "";
+    let lastSentFinalTranscript = "";
+    let lastSentInterimTranscript = "";
 
     const clearRestartTimer = () => {
         if (restartTimer !== null) {
             window.clearTimeout(restartTimer);
             restartTimer = null;
         }
+    };
+
+    const clearPendingInterimTimer = () => {
+        if (pendingInterimTimer !== null) {
+            window.clearTimeout(pendingInterimTimer);
+            pendingInterimTimer = null;
+        }
+    };
+
+    const sendTranscript = (transcript: string, isFinal: boolean) => {
+        if (isFinal) {
+            if (transcript === lastSentFinalTranscript) {
+                return;
+            }
+
+            lastSentFinalTranscript = transcript;
+            lastSentInterimTranscript = "";
+        } else {
+            if (transcript === lastSentInterimTranscript || transcript === lastSentFinalTranscript) {
+                return;
+            }
+
+            lastSentInterimTranscript = transcript;
+        }
+
+        void ingestAsrText({
+            text: transcript,
+            is_final: isFinal,
+        }).catch((error) => {
+            onStatus?.(error instanceof Error ? error.message : "浏览器语音文本注入失败");
+        });
+    };
+
+    const scheduleInterimFlush = () => {
+        clearPendingInterimTimer();
+        pendingInterimTimer = window.setTimeout(() => {
+            pendingInterimTimer = null;
+            if (!isRunning || isManuallyStopped || !pendingInterimTranscript) {
+                return;
+            }
+
+            const transcript = pendingInterimTranscript;
+            pendingInterimTranscript = "";
+            sendTranscript(transcript, false);
+        }, 500);
     };
 
     const scheduleRestart = () => {
@@ -93,12 +142,15 @@ export function createBrowserAsrSession(
                 continue;
             }
 
-            void ingestAsrText({
-                text: transcript,
-                is_final: result.isFinal,
-            }).catch((error) => {
-                onStatus?.(error instanceof Error ? error.message : "浏览器语音文本注入失败");
-            });
+            if (result.isFinal) {
+                clearPendingInterimTimer();
+                pendingInterimTranscript = "";
+                sendTranscript(transcript, true);
+                continue;
+            }
+
+            pendingInterimTranscript = transcript;
+            scheduleInterimFlush();
         }
     };
 
@@ -137,10 +189,15 @@ export function createBrowserAsrSession(
             isManuallyStopped = true;
             isRunning = false;
             clearRestartTimer();
+            clearPendingInterimTimer();
             try {
                 recognition.stop();
             } catch {
-                recognition.abort();
+                try {
+                    recognition.abort();
+                } catch {
+                    /* ignore abort errors */
+                }
             }
         },
     };

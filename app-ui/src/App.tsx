@@ -22,8 +22,6 @@ import {
   resumeMonitor,
   stopMonitor,
   stopMonitorWithSummary,
-  getConfiguredAsrMode,
-  getConfiguredWebspeechLang,
 } from "./services/api";
 import { applyUiStyleSettings, readUiStyleSettings } from "./services/preferences";
 import { createBrowserAsrSession, type BrowserAsrSession } from "./services/browserAsr";
@@ -203,18 +201,18 @@ function MainApp() {
 
   const handleStartMonitorConfirm = useCallback(
     async ({ courseName, citeFilename }: { courseName: string; citeFilename: string | null }) => {
-      const asrMode = await getConfiguredAsrMode();
-      const webspeechLang = await getConfiguredWebspeechLang();
-      activeAsrModeRef.current = asrMode;
-      activeBrowserAsrLangRef.current = webspeechLang;
-
       let backendStarted = false;
       try {
-        await startMonitor({
+        const result = await startMonitor({
           course_name: courseName,
           cite_filename: citeFilename,
         });
         backendStarted = true;
+
+        const asrMode = result.effective_asr_mode || "local";
+        const webspeechLang = result.webspeech_lang || "zh-CN";
+        activeAsrModeRef.current = asrMode;
+        activeBrowserAsrLangRef.current = webspeechLang;
 
         if (isBrowserAsrMode(asrMode)) {
           await startBrowserAsrSession();

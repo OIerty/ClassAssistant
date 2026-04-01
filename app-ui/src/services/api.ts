@@ -46,19 +46,30 @@ export interface StopMonitorResponse {
   summary_error?: string;
 }
 
+export interface StartMonitorResponse {
+  status: string;
+  message: string;
+  effective_asr_mode?: string;
+  webspeech_lang?: string;
+}
+
 /**
  * 启动摸鱼监控模式
  */
 export async function startMonitor(
   payload: StartMonitorPayload
-): Promise<{ status: string; message: string }> {
+): Promise<StartMonitorResponse> {
   const res = await fetch(`${API_BASE}/start_monitor`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("启动监控失败");
-  return res.json();
+  const data = await res.json();
+  if (data.status && data.status !== "started") {
+    throw new Error(data.message || "启动监控失败");
+  }
+  return data;
 }
 
 /**
@@ -103,7 +114,12 @@ export async function ingestAsrText(payload: {
     throw new Error(err.detail || "浏览器语音文本注入失败");
   }
 
-  return res.json();
+  const data = await res.json();
+  if (data.status && data.status !== "success") {
+    throw new Error(data.message || "浏览器语音文本注入失败");
+  }
+
+  return data;
 }
 
 /**
@@ -227,18 +243,6 @@ export async function getSettings(): Promise<{
   const res = await fetch(`${API_BASE}/settings`);
   if (!res.ok) throw new Error("读取设置失败");
   return res.json();
-}
-
-export async function getConfiguredAsrMode(): Promise<string> {
-  const res = await getSettings();
-  const match = res.content.match(/^ASR_MODE\s*=\s*(.+)$/m);
-  return match?.[1]?.trim().toLowerCase() || "local";
-}
-
-export async function getConfiguredWebspeechLang(): Promise<string> {
-  const res = await getSettings();
-  const match = res.content.match(/^WEBSPEECH_LANG\s*=\s*(.+)$/m);
-  return match?.[1]?.trim() || "zh-CN";
 }
 
 export async function saveSettings(content: string): Promise<{

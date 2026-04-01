@@ -17,7 +17,7 @@ from typing import List, Set
 from fastapi import WebSocket
 
 from config import DATA_DIR
-from services.asr_service import create_asr, BaseASR, LocalASR
+from services.asr_service import BrowserSpeechASR, create_asr, BaseASR, LocalASR
 from services.llm_service import LLMService
 from services.transcript_service import TranscriptService
 
@@ -242,6 +242,12 @@ class MonitorService:
         """接收前端浏览器识别文本，并沿用现有 ASR 回调流程。"""
         if not self.is_monitoring:
             return {"status": "not_running", "message": "监控服务未在运行"}
+
+        if self.is_paused:
+            return {"status": "paused", "message": "监控已暂停，文本未接收"}
+
+        if not isinstance(self._asr, BrowserSpeechASR):
+            return {"status": "mode_mismatch", "message": "当前 ASR 模式不支持外部文本注入"}
 
         self._on_asr_text(text, is_final)
         return {"status": "success", "message": "浏览器语音文本已接收"}

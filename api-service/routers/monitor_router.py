@@ -4,6 +4,9 @@
 处理录音启停、关键词监控、WebSocket 推送
 """
 
+import asyncio
+import os
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Optional
@@ -48,6 +51,12 @@ async def start_monitor(request: StartMonitorRequest):
         course_name=request.course_name,
         material_name=material_name,
     )
+    if result.get("status") == "started":
+        mode = os.getenv("ASR_MODE", "local").strip().lower()
+        if mode == "windows":
+            mode = "winasr"
+        result["effective_asr_mode"] = mode
+        result["webspeech_lang"] = os.getenv("WEBSPEECH_LANG", "zh-CN").strip() or "zh-CN"
     return result
 
 
@@ -99,7 +108,11 @@ async def resume_monitor():
 @router.post("/ingest_asr_text")
 async def ingest_asr_text(request: IngestAsrTextRequest):
     """接收浏览器 Web Speech 识别结果并写入课堂转录。"""
-    return monitor_service.ingest_external_text(request.text, request.is_final)
+    return await asyncio.to_thread(
+        monitor_service.ingest_external_text,
+        request.text,
+        request.is_final,
+    )
 
 
 @router.get("/monitor_status")
