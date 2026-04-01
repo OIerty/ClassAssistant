@@ -98,8 +98,15 @@ function MainApp() {
       (message: string) => {
         let text: string = message;
         let type: ToastMessage["type"] = "info";
+        const lowerMsg = message.toLowerCase();
 
-        if (message.includes("失败") || message.includes("错误")) {
+        if (
+          message.includes("失败") ||
+          message.includes("错误") ||
+          lowerMsg.includes("not-allowed") ||
+          lowerMsg.includes("service-not-allowed") ||
+          lowerMsg.includes("audio-capture")
+        ) {
           type = "error";
         }
 
