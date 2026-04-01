@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 
 try:
     import pyaudio
-except ImportError:  # pragma: no cover - optional dependency in browser-only mode
+except Exception:  # pragma: no cover - optional dependency in browser-only mode; handle ImportError/OSError/etc.
     pyaudio = None
 
 load_dotenv()
