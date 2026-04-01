@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 from datetime import datetime
 from typing import List, Set
@@ -17,7 +18,13 @@ from typing import List, Set
 from fastapi import WebSocket
 
 from config import DATA_DIR
-from services.asr_service import BrowserSpeechASR, create_asr, BaseASR, LocalASR
+from services.asr_service import (
+    BrowserSpeechASR,
+    BaseASR,
+    LocalASR,
+    create_asr,
+    get_effective_asr_mode as resolve_effective_asr_mode,
+)
 from services.llm_service import LLMService
 from services.transcript_service import TranscriptService
 
@@ -44,6 +51,7 @@ class MonitorService:
 
         # ASR 实例
         self._asr: BaseASR | None = None
+        self._ingest_token: str = ""
 
         # 用于从 ASR 回调线程安全地广播到 WebSocket 的事件循环
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -239,26 +247,18 @@ class MonitorService:
         self._asr.start()
 
     def get_effective_asr_mode(self) -> str:
-        if isinstance(self._asr, BrowserSpeechASR):
-            return "webspeech"
-        if isinstance(self._asr, LocalASR):
-            return "local"
-        from services.asr_service import DashScopeASR, SeedASR, MockASR
+        return resolve_effective_asr_mode(self._asr)
 
-        if isinstance(self._asr, DashScopeASR):
-            return "dashscope"
-        if isinstance(self._asr, SeedASR):
-            return "seed-asr"
-        if isinstance(self._asr, MockASR):
-            return "mock"
-        if self._asr is None:
-            return "mock"
-        return "mock"
+    def get_ingest_token(self) -> str:
+        return self._ingest_token
 
-    def ingest_external_text(self, text: str, is_final: bool = True) -> dict:
+    def ingest_external_text(self, text: str, is_final: bool = True, session_token: str = "") -> dict:
         """接收前端浏览器识别文本，并沿用现有 ASR 回调流程。"""
         if not self.is_monitoring:
             return {"status": "not_running", "message": "监控服务未在运行"}
+
+        if not self._ingest_token or session_token != self._ingest_token:
+            return {"status": "unauthorized", "message": "会话令牌无效或已过期"}
 
         if self.is_paused:
             return {"status": "paused", "message": "监控服务已暂停，无法接收外部文本"}
@@ -287,6 +287,7 @@ class MonitorService:
 
         self.is_monitoring = True
         self.is_paused = False
+        self._ingest_token = secrets.token_urlsafe(24)
 
         try:
             # 保存当前事件循环引用，供 ASR 回调使用
@@ -306,6 +307,7 @@ class MonitorService:
             logger.exception("[MonitorService] start failed")
             self.is_monitoring = False
             self.is_paused = False
+            self._ingest_token = ""
             if self._asr:
                 try:
                     self._asr.stop()
@@ -330,6 +332,7 @@ class MonitorService:
         if self._asr:
             self._asr.stop()
             self._asr = None
+        self._ingest_token = ""
 
         with self._state_lock:
             if self._partial_line and self._partial_line[1].strip():

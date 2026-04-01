@@ -30,6 +30,7 @@ export interface BrowserAsrSession {
 
 export interface BrowserAsrOptions {
     lang?: string;
+    sessionToken: string;
 }
 
 const AUTO_RESTART_DELAY_MS = 400;
@@ -102,6 +103,7 @@ export function createBrowserAsrSession(
                 ingestAsrText({
                     text: transcript,
                     is_final: isFinal,
+                    session_token: options.sessionToken,
                 })
             )
             .then(() => undefined)

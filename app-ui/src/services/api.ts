@@ -51,6 +51,7 @@ export interface StartMonitorResponse {
   message: string;
   effective_asr_mode?: string;
   webspeech_lang?: string;
+  asr_session_token?: string;
 }
 
 /**
@@ -101,6 +102,7 @@ export async function stopMonitorWithSummary(): Promise<StopMonitorResponse> {
 export async function ingestAsrText(payload: {
   text: string;
   is_final: boolean;
+  session_token: string;
 }): Promise<{ status: string; message: string }> {
   const res = await fetch(`${API_BASE}/ingest_asr_text`, {
     method: "POST",

@@ -35,6 +35,7 @@ class StartMonitorRequest(BaseModel):
 class IngestAsrTextRequest(BaseModel):
     text: str
     is_final: bool = True
+    session_token: str
 
 
 @router.post("/start_monitor")
@@ -55,6 +56,7 @@ async def start_monitor(request: StartMonitorRequest):
         mode = monitor_service.get_effective_asr_mode()
         result["effective_asr_mode"] = mode
         result["webspeech_lang"] = os.getenv("WEBSPEECH_LANG", "zh-CN").strip() or "zh-CN"
+        result["asr_session_token"] = monitor_service.get_ingest_token()
     return result
 
 
@@ -113,6 +115,7 @@ async def ingest_asr_text(request: IngestAsrTextRequest):
         monitor_service.ingest_external_text,
         request.text,
         request.is_final,
+        request.session_token,
     )
 
 

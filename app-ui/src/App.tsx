@@ -58,6 +58,7 @@ function MainApp() {
   const browserAsrSessionRef = useRef<BrowserAsrSession | null>(null);
   const activeAsrModeRef = useRef("local");
   const activeBrowserAsrLangRef = useRef("zh-CN");
+  const activeAsrSessionTokenRef = useRef("");
 
   // WebSocket 连接
   const { lastAlert, alertActive, connect, disconnect, dismissAlert } =
@@ -112,7 +113,10 @@ function MainApp() {
 
         addToast(text, type);
       },
-      { lang: activeBrowserAsrLangRef.current }
+      {
+        lang: activeBrowserAsrLangRef.current,
+        sessionToken: activeAsrSessionTokenRef.current,
+      }
     );
     browserAsrSessionRef.current = session;
     await session.start();
@@ -149,6 +153,7 @@ function MainApp() {
       setIsPaused(false);
       setActiveCourseName("");
       activeAsrModeRef.current = "local";
+      activeAsrSessionTokenRef.current = "";
       addToast(res.message, "info");
       if (res.summary?.filename) {
         addToast(`已自动生成总结: ${res.summary.filename}`, "success");
@@ -225,6 +230,7 @@ function MainApp() {
 
         const asrMode = result.effective_asr_mode || "local";
         const webspeechLang = result.webspeech_lang || "zh-CN";
+        activeAsrSessionTokenRef.current = result.asr_session_token || "";
         activeAsrModeRef.current = asrMode;
         activeBrowserAsrLangRef.current = webspeechLang;
 
@@ -246,6 +252,7 @@ function MainApp() {
           await stopMonitor({ withSummary: false }).catch(() => {
             /* ignore rollback failure */
           });
+          activeAsrSessionTokenRef.current = "";
           disconnect();
         }
         throw err;
