@@ -10,7 +10,7 @@ import os
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import List, Optional
-from services.asr_service import normalize_asr_mode
+from services.asr_service import get_effective_asr_mode
 from services.monitor_service import MonitorService
 from services.summary_service import SummaryService
 from services.transcript_service import TranscriptService
@@ -53,7 +53,7 @@ async def start_monitor(request: StartMonitorRequest):
         material_name=material_name,
     )
     if result.get("status") == "started":
-        mode = normalize_asr_mode(os.getenv("ASR_MODE"))
+        mode = get_effective_asr_mode(monitor_service._asr)
         result["effective_asr_mode"] = mode
         result["webspeech_lang"] = os.getenv("WEBSPEECH_LANG", "zh-CN").strip() or "zh-CN"
     return result

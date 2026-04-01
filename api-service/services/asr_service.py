@@ -42,6 +42,20 @@ def normalize_asr_mode(value: str | None) -> str:
     return value.strip().lower() or "local"
 
 
+def get_effective_asr_mode(asr: "BaseASR | None") -> str:
+    if isinstance(asr, BrowserSpeechASR):
+        return "webspeech"
+    if isinstance(asr, LocalASR):
+        return "local"
+    if isinstance(asr, DashScopeASR):
+        return "dashscope"
+    if isinstance(asr, SeedASR):
+        return "seed-asr"
+    if isinstance(asr, MockASR):
+        return "mock"
+    return "mock"
+
+
 def _require_pyaudio(mode_name: str):
     if pyaudio is None:
         raise RuntimeError(f"{mode_name} 需要 PyAudio，但当前环境未安装 pyaudio")

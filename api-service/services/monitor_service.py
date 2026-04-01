@@ -286,6 +286,7 @@ class MonitorService:
             # 本地 ASR 使用独立的回调（每句新建一行），线上 ASR 使用流式回调
             self._create_and_start_asr()
         except Exception as exc:
+            logger.exception("[MonitorService] start failed")
             self.is_monitoring = False
             self.is_paused = False
             if self._asr:
