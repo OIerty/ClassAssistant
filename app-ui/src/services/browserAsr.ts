@@ -65,6 +65,7 @@ export function createBrowserAsrSession(
     let pendingInterimTranscript = "";
     let lastSentFinalTranscript = "";
     let lastSentInterimTranscript = "";
+    let sendQueue: Promise<void> = Promise.resolve();
 
     const clearRestartTimer = () => {
         if (restartTimer !== null) {
@@ -96,12 +97,17 @@ export function createBrowserAsrSession(
             lastSentInterimTranscript = transcript;
         }
 
-        void ingestAsrText({
-            text: transcript,
-            is_final: isFinal,
-        }).catch((error) => {
-            onStatus?.(error instanceof Error ? error.message : "浏览器语音文本注入失败");
-        });
+        sendQueue = sendQueue
+            .then(() =>
+                ingestAsrText({
+                    text: transcript,
+                    is_final: isFinal,
+                })
+            )
+            .then(() => undefined)
+            .catch((error) => {
+                onStatus?.(error instanceof Error ? error.message : "浏览器语音文本注入失败");
+            });
     };
 
     const scheduleInterimFlush = () => {
