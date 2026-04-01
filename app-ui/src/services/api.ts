@@ -111,32 +111,36 @@ export async function ingestAsrText(payload: {
   if (!res.ok) {
     let message = "浏览器语音文本注入失败";
     try {
-      const errBody = await res.json();
-      const detail = errBody && errBody.detail;
-      if (typeof detail === "string") {
-        message = detail;
-      } else if (detail != null) {
-        if (Array.isArray(detail)) {
-          message = detail
-            .map((item) =>
-              typeof item === "string" ? item : JSON.stringify(item)
-            )
-            .join("; ");
-        } else if (typeof detail === "object") {
-          message = JSON.stringify(detail);
-        } else {
-          message = String(detail);
+      const text = await res.text();
+      if (text) {
+        try {
+          const errBody = JSON.parse(text);
+          const detail = errBody && errBody.detail;
+          if (typeof detail === "string") {
+            message = detail;
+          } else if (detail != null) {
+            if (Array.isArray(detail)) {
+              message = detail
+                .map((item) =>
+                  typeof item === "string" ? item : JSON.stringify(item)
+                )
+                .join("; ");
+            } else if (typeof detail === "object") {
+              message = JSON.stringify(detail);
+            } else {
+              message = String(detail);
+            }
+          } else if (message === "浏览器语音文本注入失败") {
+            // No usable detail field; fall back to raw text
+            message = text;
+          }
+        } catch {
+          // Body is not valid JSON; use raw text as the message
+          message = text;
         }
       }
     } catch {
-      try {
-        const text = await res.text();
-        if (text) {
-          message = text;
-        }
-      } catch {
-        // Ignore additional parsing errors and keep default message
-      }
+      // Ignore additional parsing errors and keep default message
     }
     throw new Error(message);
   }
