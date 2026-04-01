@@ -355,7 +355,25 @@ class MonitorService:
         self.is_paused = False
         self._ingest_token = secrets.token_urlsafe(24)
         self._loop = asyncio.get_running_loop()
-        self._create_and_start_asr()
+        try:
+            self._create_and_start_asr()
+        except Exception as exc:
+            # 回滚状态，避免服务处于不一致状态
+            logger.exception("Failed to resume monitoring due to ASR initialization error")
+            self.is_paused = True
+            if self._asr:
+                try:
+                    self._asr.stop()
+                except Exception:
+                    logger.exception("Error while stopping ASR after resume failure")
+                self._asr = None
+            self._ingest_token = ""
+            # 将 _loop 清空，避免残留无效引用
+            self._loop = None
+            return {
+                "status": "error",
+                "message": f"监控恢复失败: {exc}",
+            }
         return {"status": "resumed", "message": "监控已继续", "asr_session_token": self._ingest_token}
 
     async def stop(self) -> dict:
