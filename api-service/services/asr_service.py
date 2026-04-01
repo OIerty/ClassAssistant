@@ -3,7 +3,7 @@ ASR 语音识别服务
 ================
 支持五种模式：
   - local:     免费语音识别（Google Speech API，无需密钥，需联网）
-    - webspeech: 浏览器 Web Speech 识别前端采集，后端只接收文本
+  - webspeech: 浏览器 Web Speech 识别前端采集，后端只接收文本
   - mock:      空实现，用于开发测试
   - dashscope: 阿里云百炼 Fun-ASR 实时语音识别
   - seed-asr:  字节跳动 Seed-ASR 大模型语音识别
