@@ -121,8 +121,7 @@ async def resume_monitor():
 @router.post("/ingest_asr_text")
 async def ingest_asr_text(request: IngestAsrTextRequest):
     """接收浏览器 Web Speech 识别结果。"""
-    return await asyncio.to_thread(
-        monitor_service.ingest_external_text,
+    return monitor_service.ingest_external_text(
         request.text,
         request.is_final,
     )

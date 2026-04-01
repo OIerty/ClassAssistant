@@ -66,7 +66,8 @@ export async function startMonitor(
   });
   if (!res.ok) throw new Error("启动监控失败");
   const data = await res.json();
-  if (data.status && data.status !== "started") {
+  const successStatuses = ["started", "already_running"];
+  if (data.status && !successStatuses.includes(data.status)) {
     throw new Error(data.message || "启动监控失败");
   }
   return data;
