@@ -248,7 +248,6 @@ class MonitorService:
 
         if not isinstance(self._asr, BrowserSpeechASR):
             return {"status": "mode_mismatch", "message": "当前 ASR 模式不支持外部文本注入"}
-
         self._on_asr_text(text, is_final)
         return {"status": "success", "message": "浏览器语音文本已接收"}
 

@@ -245,6 +245,18 @@ export async function getSettings(): Promise<{
   return res.json();
 }
 
+export async function getConfiguredAsrMode(): Promise<string> {
+  const res = await getSettings();
+  const match = res.content.match(/^ASR_MODE\s*=\s*(.+)$/m);
+  return match?.[1]?.trim().toLowerCase() || "local";
+}
+
+export async function getConfiguredWebspeechLang(): Promise<string> {
+  const res = await getSettings();
+  const match = res.content.match(/^WEBSPEECH_LANG\s*=\s*(.+)$/m);
+  return match?.[1]?.trim() || "zh-CN";
+}
+
 export async function saveSettings(content: string): Promise<{
   status: string;
   message: string;
