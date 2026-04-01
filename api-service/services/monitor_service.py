@@ -277,6 +277,13 @@ class MonitorService:
                 "message": "空文本已忽略，不会写入转录",
             }
 
+        # 为避免在外部注入场景下高频 interim 文本触发大量 INFO 级别日志，
+        # 这里对非 final 的文本不再进入 _on_asr_text（仅最终结果参与转录和告警逻辑）。
+        if not is_final:
+            return {
+                "status": "success",
+                "message": "浏览器语音临时文本已接收（未写入转录以减少日志噪声）",
+            }
         self._on_asr_text(clean_text, is_final)
         return {"status": "success", "message": "浏览器语音文本已接收"}
 
