@@ -122,6 +122,15 @@ function MainApp() {
     await session.start();
   }, [addToast, stopBrowserAsrSession]);
 
+  useEffect(() => {
+    return () => {
+      void stopBrowserAsrSession();
+      activeAsrModeRef.current = "local";
+      activeBrowserAsrLangRef.current = "zh-CN";
+      activeAsrSessionTokenRef.current = "";
+    };
+  }, [stopBrowserAsrSession]);
+
   // ---- 上传 PPT ----
   const handleUpload = useCallback(
     async (file: File) => {
