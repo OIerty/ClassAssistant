@@ -114,13 +114,17 @@ export function createBrowserAsrSession(
         }
 
         sendQueue = sendQueue
-            .then(() =>
-                ingestAsrText({
+            .then(() => {
+                if (!isRunning || isManuallyStopped) {
+                    return;
+                }
+
+                return ingestAsrText({
                     text: transcript,
                     is_final: isFinal,
                     asr_session_token: sessionToken,
-                })
-            )
+                });
+            })
             .then(() => undefined)
             .catch((error) => {
                 // Avoid reporting errors after the session has been stopped.
