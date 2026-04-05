@@ -381,7 +381,7 @@ class MonitorService:
                 "status": "error",
                 "message": "监控恢复失败，请稍后重试",
             }
-        return {"status": "resumed", "message": "监控已继续", "asr_session_token": self._ingest_token}
+        return {"status": "resumed", "message": "监控已继续"}
 
     async def stop(self) -> dict:
         """停止监控服务"""
