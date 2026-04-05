@@ -221,8 +221,7 @@ class DashScopeASR(BaseASR):
 
         api_key = os.getenv("DASHSCOPE_API_KEY", "")
         if not api_key:
-            logger.error("[DashScopeASR] DASHSCOPE_API_KEY not set")
-            return
+            raise RuntimeError("DashScopeASR requires DASHSCOPE_API_KEY in .env")
 
         dashscope.api_key = api_key
         dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
@@ -427,6 +426,10 @@ class SeedASR(BaseASR):
 
     def start(self):
         _require_pyaudio("SeedASR")
+        app_key = os.getenv("SEED_ASR_APP_KEY", "")
+        access_key = os.getenv("SEED_ASR_ACCESS_KEY", "")
+        if not app_key or not access_key:
+            raise RuntimeError("SeedASR requires SEED_ASR_APP_KEY and SEED_ASR_ACCESS_KEY in .env")
         self._running = True
         self._stop_event.clear()
         self._seen_utterances.clear()

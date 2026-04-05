@@ -246,6 +246,10 @@ class MonitorService:
             self._asr.on_text = self._on_local_asr_text
         self._asr.start()
 
+        # 防御性校验：ASR 启动后必须处于 running 状态，否则视为启动失败。
+        if self._asr is None or not getattr(self._asr, "_running", False):
+            raise RuntimeError("ASR initialization did not produce a running ASR instance")
+
     def _build_resume_error(self, exc: Exception) -> dict:
         """将恢复失败映射为更可操作的错误码和提示，便于前端引导用户修复。"""
         raw = str(exc or "").strip()

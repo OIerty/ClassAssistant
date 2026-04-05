@@ -230,17 +230,22 @@ export function createBrowserAsrSession(
             try {
                 recognition.start();
             } catch (error) {
+                const errorName = getErrorName(error);
+                const errorMessage = getErrorMessage(error);
                 const retryable = isRetryableStartError(error);
                 onStatus?.(
                     retryable
-                        ? `浏览器语音启动重试中：${getErrorName(error)} - ${getErrorMessage(error)}`
-                        : `浏览器语音启动失败：${getErrorName(error)} - ${getErrorMessage(error)}`,
+                        ? `浏览器语音启动重试中：${errorName} - ${errorMessage}`
+                        : `浏览器语音启动失败：${errorName} - ${errorMessage}`,
                 );
 
                 if (!retryable) {
                     isRunning = false;
                     clearRestartTimer();
-                    return;
+                    if (error instanceof Error) {
+                        throw error;
+                    }
+                    throw new Error(`浏览器语音启动失败：${errorName} - ${errorMessage}`);
                 }
 
                 scheduleRestart();
