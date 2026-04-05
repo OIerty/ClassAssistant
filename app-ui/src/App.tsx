@@ -229,32 +229,24 @@ function MainApp() {
           throw resumeErr;
         }
       } else {
-        const res = await pauseMonitor();
+        const shouldManageBrowserAsr = isBrowserAsrMode(activeAsrModeRef.current);
         let browserAsrStopped = false;
+        if (shouldManageBrowserAsr) {
+          await stopBrowserAsrSession();
+          browserAsrStopped = true;
+        }
+
         try {
-          if (isBrowserAsrMode(activeAsrModeRef.current)) {
-            await stopBrowserAsrSession();
-            browserAsrStopped = true;
-          }
+          const res = await pauseMonitor();
           disconnect();
           setIsPaused(true);
           activeAsrSessionTokenRef.current = "";
           addToast(res.message, "info");
         } catch (pauseErr) {
-          try {
-            const rollbackRes = await resumeMonitor();
-            activeAsrSessionTokenRef.current =
-              rollbackRes.asr_session_token || activeAsrSessionTokenRef.current;
-            activeAsrModeRef.current =
-              rollbackRes.effective_asr_mode || activeAsrModeRef.current;
-            activeBrowserAsrLangRef.current =
-              rollbackRes.webspeech_lang || activeBrowserAsrLangRef.current;
-            if (browserAsrStopped && isBrowserAsrMode(activeAsrModeRef.current)) {
-              await startBrowserAsrSession();
-            }
-            connect();
-          } catch {
-            /* ignore rollback failure */
+          if (browserAsrStopped && shouldManageBrowserAsr) {
+            await startBrowserAsrSession().catch(() => {
+              /* ignore browser ASR rollback failure */
+            });
           }
           throw pauseErr;
         }

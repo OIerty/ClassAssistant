@@ -328,11 +328,11 @@ class MonitorService:
         if not self.is_monitoring:
             return {"status": "not_running", "message": "监控服务未在运行"}
 
-        if not self._ingest_token or asr_session_token != self._ingest_token:
-            return {"status": "unauthorized", "message": "会话令牌无效或已过期"}
-
         if self.is_paused:
             return {"status": "paused", "message": "监控服务已暂停，无法接收外部文本"}
+
+        if not self._ingest_token or asr_session_token != self._ingest_token:
+            return {"status": "unauthorized", "message": "会话令牌无效或已过期"}
 
         # 增加防御性检查：确保当前 ASR 实例确实是 BrowserSpeechASR，避免在其他模式下产生重复转录
         if not isinstance(self._asr, BrowserSpeechASR):
