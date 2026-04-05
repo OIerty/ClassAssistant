@@ -55,7 +55,7 @@ async def start_monitor(request: StartMonitorRequest):
     if result.get("status") == "started":
         mode = monitor_service.get_effective_asr_mode()
         result["effective_asr_mode"] = mode
-        if mode in {"webspeech", "browser"}:
+        if mode == "webspeech":
             result["webspeech_lang"] = os.getenv("WEBSPEECH_LANG", "zh-CN").strip() or "zh-CN"
             result["asr_session_token"] = monitor_service.get_ingest_token()
     return result
@@ -110,7 +110,7 @@ async def resume_monitor():
     if result.get("status") == "resumed":
         mode = monitor_service.get_effective_asr_mode()
         result["effective_asr_mode"] = mode
-        if mode in {"webspeech", "browser"}:
+        if mode == "webspeech":
             result["webspeech_lang"] = os.getenv("WEBSPEECH_LANG", "zh-CN").strip() or "zh-CN"
             result["asr_session_token"] = monitor_service.get_ingest_token()
     return result

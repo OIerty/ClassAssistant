@@ -146,8 +146,10 @@ function MainApp() {
   const handleStopMonitor = useCallback(async () => {
     setIsLoading(true);
     try {
-      await stopBrowserAsrSession();
       const res = await stopMonitorWithSummary();
+      if (isBrowserAsrMode(activeAsrModeRef.current)) {
+        await stopBrowserAsrSession();
+      }
       disconnect();
       setIsMonitoring(false);
       setIsPaused(false);
@@ -175,7 +177,7 @@ function MainApp() {
     } finally {
       setIsLoading(false);
     }
-  }, [disconnect, addToast, stopBrowserAsrSession]);
+  }, [disconnect, addToast, isBrowserAsrMode, stopBrowserAsrSession]);
 
   const handleOpenStartMonitor = useCallback(() => {
     setShowStartMonitorPanel(true);
@@ -207,14 +209,35 @@ function MainApp() {
           throw resumeErr;
         }
       } else {
-        if (isBrowserAsrMode(activeAsrModeRef.current)) {
-          await stopBrowserAsrSession();
-        }
         const res = await pauseMonitor();
-        disconnect();
-        setIsPaused(true);
-        activeAsrSessionTokenRef.current = "";
-        addToast(res.message, "info");
+        let browserAsrStopped = false;
+        try {
+          if (isBrowserAsrMode(activeAsrModeRef.current)) {
+            await stopBrowserAsrSession();
+            browserAsrStopped = true;
+          }
+          disconnect();
+          setIsPaused(true);
+          activeAsrSessionTokenRef.current = "";
+          addToast(res.message, "info");
+        } catch (pauseErr) {
+          try {
+            const rollbackRes = await resumeMonitor();
+            activeAsrSessionTokenRef.current =
+              rollbackRes.asr_session_token || activeAsrSessionTokenRef.current;
+            activeAsrModeRef.current =
+              rollbackRes.effective_asr_mode || activeAsrModeRef.current;
+            activeBrowserAsrLangRef.current =
+              rollbackRes.webspeech_lang || activeBrowserAsrLangRef.current;
+            if (browserAsrStopped && isBrowserAsrMode(activeAsrModeRef.current)) {
+              await startBrowserAsrSession();
+            }
+            connect();
+          } catch {
+            /* ignore rollback failure */
+          }
+          throw pauseErr;
+        }
       }
     } catch (err) {
       addToast(

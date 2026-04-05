@@ -58,7 +58,10 @@ def get_effective_asr_mode(asr: "BaseASR | None") -> str:
 
 def _require_pyaudio(mode_name: str):
     if pyaudio is None:
-        raise RuntimeError(f"{mode_name} 需要 PyAudio，但当前环境未安装 pyaudio")
+        raise RuntimeError(
+            f"{mode_name} 需要 PyAudio，但当前环境未安装麦克风相关依赖。"
+            "请先安装 requirements-mic.txt，例如执行：pip install -r requirements-mic.txt"
+        )
 
 
 class BaseASR:
