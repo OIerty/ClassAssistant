@@ -68,12 +68,8 @@ export function createBrowserAsrSession(
     let isRunning = false;
     let isManuallyStopped = false;
     let restartTimer: number | null = null;
-    let pendingInterimTimer: number | null = null;
-    let pendingInterimTranscript = "";
     let lastSentFinalTranscript = "";
     let lastSentFinalAt = 0;
-    let lastSentInterimTranscript = "";
-    let lastSentInterimAt = 0;
     let sendQueue: Promise<void> = Promise.resolve();
 
     const clearRestartTimer = () => {
@@ -83,35 +79,14 @@ export function createBrowserAsrSession(
         }
     };
 
-    const clearPendingInterimTimer = () => {
-        if (pendingInterimTimer !== null) {
-            window.clearTimeout(pendingInterimTimer);
-            pendingInterimTimer = null;
-        }
-    };
-
-    const sendTranscript = (transcript: string, isFinal: boolean) => {
+    const sendTranscript = (transcript: string) => {
         const now = Date.now();
-        if (isFinal) {
-            if (transcript === lastSentFinalTranscript && now - lastSentFinalAt < DEDUPE_WINDOW_MS) {
-                return;
-            }
-
-            lastSentFinalTranscript = transcript;
-            lastSentFinalAt = now;
-            lastSentInterimTranscript = "";
-            lastSentInterimAt = 0;
-        } else {
-            if (
-                (transcript === lastSentInterimTranscript && now - lastSentInterimAt < DEDUPE_WINDOW_MS) ||
-                (transcript === lastSentFinalTranscript && now - lastSentFinalAt < DEDUPE_WINDOW_MS)
-            ) {
-                return;
-            }
-
-            lastSentInterimTranscript = transcript;
-            lastSentInterimAt = now;
+        if (transcript === lastSentFinalTranscript && now - lastSentFinalAt < DEDUPE_WINDOW_MS) {
+            return;
         }
+
+        lastSentFinalTranscript = transcript;
+        lastSentFinalAt = now;
 
         sendQueue = sendQueue
             .then(() => {
@@ -121,7 +96,7 @@ export function createBrowserAsrSession(
 
                 return ingestAsrText({
                     text: transcript,
-                    is_final: isFinal,
+                    is_final: true,
                     asr_session_token: sessionToken,
                 });
             })
@@ -133,20 +108,6 @@ export function createBrowserAsrSession(
                 }
                 onStatus?.(error instanceof Error ? error.message : "浏览器语音文本注入失败");
             });
-    };
-
-    const scheduleInterimFlush = () => {
-        clearPendingInterimTimer();
-        pendingInterimTimer = window.setTimeout(() => {
-            pendingInterimTimer = null;
-            if (!isRunning || isManuallyStopped || !pendingInterimTranscript) {
-                return;
-            }
-
-            const transcript = pendingInterimTranscript;
-            pendingInterimTranscript = "";
-            sendTranscript(transcript, false);
-        }, 500);
     };
 
     const scheduleRestart = () => {
@@ -178,14 +139,8 @@ export function createBrowserAsrSession(
             }
 
             if (result.isFinal) {
-                clearPendingInterimTimer();
-                pendingInterimTranscript = "";
-                sendTranscript(transcript, true);
-                continue;
+                sendTranscript(transcript);
             }
-
-            pendingInterimTranscript = transcript;
-            scheduleInterimFlush();
         }
     };
 
@@ -224,7 +179,6 @@ export function createBrowserAsrSession(
             isManuallyStopped = true;
             isRunning = false;
             clearRestartTimer();
-            clearPendingInterimTimer();
             try {
                 recognition.stop();
             } catch {
