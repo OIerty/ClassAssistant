@@ -54,6 +54,37 @@ export interface StartMonitorResponse {
   asr_session_token?: string;
 }
 
+async function extractErrorMessage(
+  res: Response,
+  fallback: string
+): Promise<string> {
+  try {
+    const raw = await res.text();
+    if (!raw) {
+      return fallback;
+    }
+
+    try {
+      const err = JSON.parse(raw);
+      const detail = err?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+      if (detail != null) {
+        return JSON.stringify(detail);
+      }
+      if (typeof err?.message === "string" && err.message.trim()) {
+        return err.message;
+      }
+      return raw;
+    } catch {
+      return raw;
+    }
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * 启动摸鱼监控模式
  */
@@ -65,7 +96,9 @@ export async function startMonitor(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("启动监控失败");
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "启动监控失败"));
+  }
   const data = await res.json();
   if (data.status && data.status !== "started") {
     throw new Error(data.message || "启动监控失败");
@@ -97,7 +130,9 @@ export async function resumeMonitor(): Promise<{
   webspeech_lang?: string;
 }> {
   const res = await fetch(`${API_BASE}/resume_monitor`, { method: "POST" });
-  if (!res.ok) throw new Error("继续监控失败");
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "继续监控失败"));
+  }
   const data = await res.json();
   if (data.status && data.status !== "resumed") {
     throw new Error(data.message || "继续监控失败");

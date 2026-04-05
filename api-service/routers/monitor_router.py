@@ -47,7 +47,10 @@ async def start_monitor(request: StartMonitorRequest):
     - 启动关键词监控
     """
     material_name = request.cite_filename or ""
-    transcript_service.activate_cite_file(material_name or None)
+    try:
+        transcript_service.activate_cite_file(material_name or None)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail="未找到资料文件，请重新选择") from exc
     result = await monitor_service.start(
         course_name=request.course_name,
         material_name=material_name,
