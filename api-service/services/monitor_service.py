@@ -252,12 +252,12 @@ class MonitorService:
     def get_ingest_token(self) -> str:
         return self._ingest_token
 
-    def ingest_external_text(self, text: str, is_final: bool = True, session_token: str = "") -> dict:
+    def ingest_external_text(self, text: str, is_final: bool = True, asr_session_token: str = "") -> dict:
         """接收前端浏览器识别文本，并沿用现有 ASR 回调流程。"""
         if not self.is_monitoring:
             return {"status": "not_running", "message": "监控服务未在运行"}
 
-        if not self._ingest_token or session_token != self._ingest_token:
+        if not self._ingest_token or asr_session_token != self._ingest_token:
             return {"status": "unauthorized", "message": "会话令牌无效或已过期"}
 
         if self.is_paused:

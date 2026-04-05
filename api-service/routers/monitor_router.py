@@ -34,8 +34,8 @@ class StartMonitorRequest(BaseModel):
 
 class IngestAsrTextRequest(BaseModel):
     text: str
+    asr_session_token: str
     is_final: bool = True
-    session_token: str
 
 
 @router.post("/start_monitor")
@@ -119,7 +119,7 @@ async def ingest_asr_text(request: IngestAsrTextRequest):
         monitor_service.ingest_external_text,
         request.text,
         request.is_final,
-        request.session_token,
+        request.asr_session_token,
     )
 
 

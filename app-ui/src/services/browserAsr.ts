@@ -54,14 +54,15 @@ export function createBrowserAsrSession(
         throw new Error("当前浏览器/内核不支持 SpeechRecognition / webkitSpeechRecognition");
     }
 
-    if (!options.sessionToken) {
+    const sessionToken = options.sessionToken;
+    if (!sessionToken) {
         throw new Error("浏览器语音会话令牌缺失，无法注入识别结果");
     }
 
     const recognition = new Recognition();
     recognition.lang = options.lang?.trim() || "zh-CN";
     recognition.continuous = true;
-    recognition.interimResults = true;
+    recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
     let isRunning = false;
@@ -117,7 +118,7 @@ export function createBrowserAsrSession(
                 ingestAsrText({
                     text: transcript,
                     is_final: isFinal,
-                    session_token: options.sessionToken,
+                    asr_session_token: sessionToken,
                 })
             )
             .then(() => undefined)
