@@ -118,8 +118,23 @@ function MainApp() {
         addToast(text, type);
       }
     );
-    browserAsrSessionRef.current = session;
-    await session.start();
+
+    try {
+      await session.start();
+      browserAsrSessionRef.current = session;
+    } catch (error) {
+      if (browserAsrSessionRef.current === session) {
+        browserAsrSessionRef.current = null;
+      }
+
+      try {
+        await session.stop();
+      } catch {
+        // Ignore cleanup errors and preserve the original start failure.
+      }
+
+      throw error;
+    }
   }, [addToast, stopBrowserAsrSession]);
 
   useEffect(() => {
