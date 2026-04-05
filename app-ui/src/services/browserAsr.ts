@@ -47,20 +47,21 @@ function getRecognitionConstructor(): RecognitionConstructor | null {
 
 export function createBrowserAsrSession(
     onStatus?: (message: string) => void,
-    options: BrowserAsrOptions
+    options?: BrowserAsrOptions
 ): BrowserAsrSession {
+    const opts = (options ?? {}) as Partial<BrowserAsrOptions>;
     const Recognition = getRecognitionConstructor();
     if (!Recognition) {
         throw new Error("当前浏览器/内核不支持 SpeechRecognition / webkitSpeechRecognition");
     }
 
-    const sessionToken = options.sessionToken;
+    const sessionToken = opts.sessionToken;
     if (!sessionToken) {
         throw new Error("浏览器语音会话令牌缺失，无法注入识别结果");
     }
 
     const recognition = new Recognition();
-    recognition.lang = options.lang?.trim() || "zh-CN";
+    recognition.lang = opts.lang?.trim() || "zh-CN";
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
