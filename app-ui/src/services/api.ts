@@ -58,6 +58,21 @@ async function extractErrorMessage(
   res: Response,
   fallback: string
 ): Promise<string> {
+  const formatDetail = (detail: unknown): string | null => {
+    if (typeof detail === "string") {
+      return detail.trim() ? detail : null;
+    }
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+        .join("; ");
+    }
+    if (detail != null) {
+      return JSON.stringify(detail);
+    }
+    return null;
+  };
+
   try {
     const raw = await res.text();
     if (!raw) {
@@ -66,12 +81,9 @@ async function extractErrorMessage(
 
     try {
       const err = JSON.parse(raw);
-      const detail = err?.detail;
-      if (typeof detail === "string" && detail.trim()) {
-        return detail;
-      }
-      if (detail != null) {
-        return JSON.stringify(detail);
+      const detailMessage = formatDetail(err?.detail);
+      if (detailMessage) {
+        return detailMessage;
       }
       if (typeof err?.message === "string" && err.message.trim()) {
         return err.message;
@@ -156,40 +168,7 @@ export async function ingestAsrText(payload: {
   });
 
   if (!res.ok) {
-    let message = "浏览器语音文本注入失败";
-    try {
-      const text = await res.text();
-      if (text) {
-        try {
-          const errBody = JSON.parse(text);
-          const detail = errBody && errBody.detail;
-          if (typeof detail === "string") {
-            message = detail;
-          } else if (detail != null) {
-            if (Array.isArray(detail)) {
-              message = detail
-                .map((item) =>
-                  typeof item === "string" ? item : JSON.stringify(item)
-                )
-                .join("; ");
-            } else if (typeof detail === "object") {
-              message = JSON.stringify(detail);
-            } else {
-              message = String(detail);
-            }
-          } else if (message === "浏览器语音文本注入失败") {
-            // No usable detail field; fall back to raw text
-            message = text;
-          }
-        } catch {
-          // Body is not valid JSON; use raw text as the message
-          message = text;
-        }
-      }
-    } catch {
-      // Ignore additional parsing errors and keep default message
-    }
-    throw new Error(message);
+    throw new Error(await extractErrorMessage(res, "浏览器语音文本注入失败"));
   }
 
   const data = await res.json();
