@@ -96,6 +96,10 @@ function MainApp() {
   const startBrowserAsrSession = useCallback(async () => {
     await stopBrowserAsrSession();
     const session = createBrowserAsrSession(
+      {
+        lang: activeBrowserAsrLangRef.current,
+        sessionToken: activeAsrSessionTokenRef.current,
+      },
       (message: string) => {
         const text: string = message;
         let type: ToastMessage["type"] = "info";
@@ -112,10 +116,6 @@ function MainApp() {
         }
 
         addToast(text, type);
-      },
-      {
-        lang: activeBrowserAsrLangRef.current,
-        sessionToken: activeAsrSessionTokenRef.current,
       }
     );
     browserAsrSessionRef.current = session;

@@ -75,8 +75,8 @@ function getRecognitionConstructor(): RecognitionConstructor | null {
 }
 
 export function createBrowserAsrSession(
-    onStatus?: (message: string) => void,
     options: BrowserAsrOptions,
+    onStatus?: (message: string) => void,
 ): BrowserAsrSession {
     const opts = options;
     const Recognition = getRecognitionConstructor();
