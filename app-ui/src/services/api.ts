@@ -288,16 +288,20 @@ export async function getSettings(): Promise<{
   return res.json();
 }
 
+function stripInlineEnvComment(value: string): string {
+  return value.split(/[#;]/, 1)[0].trim();
+}
+
 export async function getConfiguredAsrMode(): Promise<string> {
   const res = await getSettings();
   const match = res.content.match(/^ASR_MODE\s*=\s*(.+)$/m);
-  return match?.[1]?.trim().toLowerCase() || "local";
+  return (match?.[1] ? stripInlineEnvComment(match[1]).toLowerCase() : "") || "local";
 }
 
 export async function getConfiguredWebspeechLang(): Promise<string> {
   const res = await getSettings();
   const match = res.content.match(/^WEBSPEECH_LANG\s*=\s*(.+)$/m);
-  return match?.[1]?.trim() || "zh-CN";
+  return (match?.[1] ? stripInlineEnvComment(match[1]) : "") || "zh-CN";
 }
 
 export async function saveSettings(content: string): Promise<{

@@ -322,7 +322,7 @@ class MonitorService:
                     pass
                 self._asr = None
             self._loop = None
-            return {"status": "error", "message": str(exc)}
+            return {"status": "error", "message": "监控服务启动失败，请稍后重试"}
 
         return {"status": "started", "message": "开始摸鱼模式 🎣 录音和监控已启动"}
 
@@ -379,7 +379,7 @@ class MonitorService:
             self._loop = None
             return {
                 "status": "error",
-                "message": f"监控恢复失败: {exc}",
+                "message": "监控恢复失败，请稍后重试",
             }
         return {"status": "resumed", "message": "监控已继续", "asr_session_token": self._ingest_token}
 

@@ -30,7 +30,7 @@ export interface BrowserAsrSession {
 
 export interface BrowserAsrOptions {
     lang?: string;
-    sessionToken?: string;
+    sessionToken: string;
 }
 
 const AUTO_RESTART_DELAY_MS = 400;
@@ -47,7 +47,7 @@ function getRecognitionConstructor(): RecognitionConstructor | null {
 
 export function createBrowserAsrSession(
     onStatus?: (message: string) => void,
-    options: BrowserAsrOptions = {}
+    options: BrowserAsrOptions
 ): BrowserAsrSession {
     const Recognition = getRecognitionConstructor();
     if (!Recognition) {
