@@ -120,9 +120,6 @@ export function createBrowserAsrSession(
             return;
         }
 
-        lastSentFinalTranscript = transcript;
-        lastSentFinalAt = now;
-
         sendQueue = sendQueue
             .then(() => {
                 if (!isRunning || isManuallyStopped) {
@@ -135,7 +132,11 @@ export function createBrowserAsrSession(
                     asr_session_token: sessionToken,
                 });
             })
-            .then(() => undefined)
+            .then(() => {
+                // 仅在后端确认接收成功后更新去重状态，避免失败后同文本被窗口抑制。
+                lastSentFinalTranscript = transcript;
+                lastSentFinalAt = Date.now();
+            })
             .catch((error) => {
                 // Avoid reporting errors after the session has been stopped.
                 if (!isRunning || isManuallyStopped) {
