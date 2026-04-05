@@ -246,6 +246,73 @@ class MonitorService:
             self._asr.on_text = self._on_local_asr_text
         self._asr.start()
 
+    def _build_resume_error(self, exc: Exception) -> dict:
+        """将恢复失败映射为更可操作的错误码和提示，便于前端引导用户修复。"""
+        raw = str(exc or "").strip()
+        lowered = raw.lower()
+
+        if "pyaudio" in lowered or "需要 pyaudio" in lowered:
+            return {
+                "status": "error",
+                "error_code": "missing_pyaudio",
+                "message": "恢复失败：当前 ASR 模式需要麦克风依赖，请安装 requirements-mic.txt 后重试",
+            }
+
+        permission_hints = (
+            "not-allowed",
+            "service-not-allowed",
+            "audio-capture",
+            "permission",
+            "denied",
+            "access is denied",
+            "权限",
+        )
+        if any(token in lowered for token in permission_hints):
+            return {
+                "status": "error",
+                "error_code": "audio_permission_denied",
+                "message": "恢复失败：无法访问麦克风，请检查系统麦克风权限或设备占用后重试",
+            }
+
+        config_hints = (
+            "api_key",
+            "app_key",
+            "access_key",
+            "resource_id",
+            "missing",
+            "invalid",
+            "未配置",
+            "配置",
+        )
+        if any(token in lowered for token in config_hints):
+            return {
+                "status": "error",
+                "error_code": "asr_config_error",
+                "message": "恢复失败：ASR 配置无效或缺失，请检查 .env 中的 ASR 相关参数",
+            }
+
+        network_hints = (
+            "timeout",
+            "timed out",
+            "network",
+            "connection",
+            "websocket",
+            "连接",
+            "超时",
+        )
+        if any(token in lowered for token in network_hints):
+            return {
+                "status": "error",
+                "error_code": "asr_network_error",
+                "message": "恢复失败：ASR 服务连接异常，请检查网络与服务状态后重试",
+            }
+
+        return {
+            "status": "error",
+            "error_code": "resume_failed",
+            "message": "监控恢复失败，请稍后重试",
+        }
+
     def get_effective_asr_mode(self) -> str:
         return resolve_effective_asr_mode(self._asr)
 
@@ -377,10 +444,7 @@ class MonitorService:
             self._ingest_token = ""
             # 将 _loop 清空，避免残留无效引用
             self._loop = None
-            return {
-                "status": "error",
-                "message": "监控恢复失败，请稍后重试",
-            }
+            return self._build_resume_error(exc)
         return {"status": "resumed", "message": "监控已继续"}
 
     async def stop(self) -> dict:
