@@ -99,6 +99,12 @@ python -m venv .venv
 .venv\Scripts\pip install pyinstaller
 ```
 
+如果你要使用麦克风采集模式（`local` / `dashscope` / `seed-asr`），再额外安装：
+
+```bash
+.venv\Scripts\pip install -r requirements-mic.txt
+```
+
 ### 3. 配置前端依赖
 
 ```bash
@@ -171,11 +177,13 @@ npm run tauri dev
 
 | 模式 | 说明 |
 | ------ | ------ |
-| local | 基于 SpeechRecognition + Google Speech API，按句回调，适合直接体验 |
+| local | 基于 SpeechRecognition + Google Speech API，按句回调，适合直接体验（需安装 PyAudio） |
 | webspeech | Edge/WebView2 Web Speech API，由前端采集后把文本注入后端 |
 | mock | 不录音、不识别，适合纯 UI 联调 |
-| dashscope | 阿里云百炼 Fun-ASR |
-| seed-asr | 字节 Seed-ASR，使用 utterances + definite 分句，避免流式累积文本反复写盘 |
+| dashscope | 阿里云百炼 Fun-ASR（需安装 PyAudio） |
+| seed-asr | 字节 Seed-ASR，使用 utterances + definite 分句，避免流式累积文本反复写盘（需安装 PyAudio） |
+
+说明：`webspeech` 与 `mock` 模式不依赖 PyAudio，可仅安装 `requirements.txt` 运行。
 
 ### 当前转录策略
 
