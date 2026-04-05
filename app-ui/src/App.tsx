@@ -145,11 +145,15 @@ function MainApp() {
   // ---- 开始/停止摸鱼 ----
   const handleStopMonitor = useCallback(async () => {
     setIsLoading(true);
+    const shouldManageBrowserAsr = isBrowserAsrMode(activeAsrModeRef.current);
+    let browserAsrStopped = false;
     try {
-      const res = await stopMonitorWithSummary();
-      if (isBrowserAsrMode(activeAsrModeRef.current)) {
+      if (shouldManageBrowserAsr) {
         await stopBrowserAsrSession();
+        browserAsrStopped = true;
       }
+
+      const res = await stopMonitorWithSummary();
       disconnect();
       setIsMonitoring(false);
       setIsPaused(false);
@@ -170,6 +174,13 @@ function MainApp() {
         /* 忽略窗口操作错误 */
       }
     } catch (err) {
+      if (browserAsrStopped && shouldManageBrowserAsr) {
+        try {
+          await startBrowserAsrSession();
+        } catch {
+          /* ignore browser ASR restart failure */
+        }
+      }
       addToast(
         `操作失败: ${err instanceof Error ? err.message : "未知错误"}`,
         "error"
@@ -177,7 +188,7 @@ function MainApp() {
     } finally {
       setIsLoading(false);
     }
-  }, [disconnect, addToast, isBrowserAsrMode, stopBrowserAsrSession]);
+  }, [disconnect, addToast, isBrowserAsrMode, stopBrowserAsrSession, startBrowserAsrSession]);
 
   const handleOpenStartMonitor = useCallback(() => {
     setShowStartMonitorPanel(true);
