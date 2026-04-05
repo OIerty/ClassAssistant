@@ -123,10 +123,6 @@ function MainApp() {
       await session.start();
       browserAsrSessionRef.current = session;
     } catch (error) {
-      if (browserAsrSessionRef.current === session) {
-        browserAsrSessionRef.current = null;
-      }
-
       try {
         await session.stop();
       } catch {
