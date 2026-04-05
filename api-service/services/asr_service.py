@@ -85,6 +85,11 @@ class BaseASR:
         """停止 ASR 识别"""
         raise NotImplementedError
 
+    @property
+    def is_running(self) -> bool:
+        """公开运行状态，避免外部直接耦合内部字段实现。"""
+        return self._running
+
 
 class MockASR(BaseASR):
     """Mock ASR - 不进行真实录音/识别，仅用于测试"""

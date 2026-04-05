@@ -196,6 +196,12 @@ async def check_mic():
             "channels": channels,
             "message": f"麦克风可用: {device_name}"
         }
+    except ImportError:
+        return {
+            "status": "error",
+            "error_code": "missing_mic_dependency",
+            "message": "未安装麦克风依赖。请先安装 requirements-mic.txt（例如：pip install -r requirements-mic.txt）",
+        }
     except Exception as e:
         return {
             "status": "error",

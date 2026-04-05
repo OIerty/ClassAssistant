@@ -247,7 +247,7 @@ class MonitorService:
         self._asr.start()
 
         # 防御性校验：ASR 启动后必须处于 running 状态，否则视为启动失败。
-        if self._asr is None or not getattr(self._asr, "_running", False):
+        if self._asr is None or not self._asr.is_running:
             raise RuntimeError("ASR initialization did not produce a running ASR instance")
 
     def _build_asr_init_error(self, exc: Exception, action: str) -> dict:
