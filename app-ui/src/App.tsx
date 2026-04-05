@@ -97,7 +97,7 @@ function MainApp() {
     await stopBrowserAsrSession();
     const session = createBrowserAsrSession(
       (message: string) => {
-        let text: string = message;
+        const text: string = message;
         let type: ToastMessage["type"] = "info";
         const lowerMsg = message.toLowerCase();
 
